@@ -1,0 +1,11 @@
+# Runtime state lives in ~/.detent (next to the resolved global config), not here.
+# Ignore anything that leaks in if CONFIG is ever pointed at this directory.
+detent.db
+detent.db-wal
+detent.db-shm
+detent.log
+*.log
+
+# OS / editor cruft
+.DS_Store
+*.swp
