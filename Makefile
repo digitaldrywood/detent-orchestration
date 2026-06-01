@@ -2,14 +2,23 @@ SHELL := /bin/bash
 .PHONY: help up down restart rebuild status logs attach doctor
 
 # --- config (override on the command line, e.g. `make up PORT=4100`) ---
-DETENT_SRC ?= $(HOME)/projects/digitaldrywood/detent   # source clone holding cmd/detent
-BIN        ?= $(HOME)/go/bin/detent                     # installed binary launched by `up`
-CONFIG     ?= $(HOME)/.detent/global.yaml               # live config (symlink -> ./global.yaml); DB + log live beside it in ~/.detent
-PORT       ?= 4000
-SESSION    ?= detent-orch                               # tmux session name — deliberately distinct from any 'Detent' editor/Claude session
-ENV        ?= dev
-LOG_LEVEL  ?= debug
-LOG        := $(HOME)/.detent/detent.log
+# Inline comments are avoided here on purpose: GNU Make keeps trailing
+# whitespace before a `#` as part of the value, which would corrupt paths
+# and the tmux session name.
+
+# Source clone holding cmd/detent.
+DETENT_SRC ?= $(HOME)/projects/digitaldrywood/detent
+# Installed binary launched by `up`.
+BIN ?= $(HOME)/go/bin/detent
+# Live config (a symlink to ./global.yaml after cutover); detent keeps its DB
+# and log next to the resolved config file, i.e. in ~/.detent.
+CONFIG ?= $(HOME)/.detent/global.yaml
+PORT ?= 4000
+# tmux session name — deliberately distinct from any 'Detent' editor session.
+SESSION ?= detent-orch
+ENV ?= dev
+LOG_LEVEL ?= debug
+LOG := $(HOME)/.detent/detent.log
 
 # Single source of truth for the launch command (token is read at runtime, never stored).
 LAUNCH = DETENT_ENV=$(ENV) DETENT_LOG_LEVEL=$(LOG_LEVEL) GITHUB_TOKEN="$$(gh auth token)" $(BIN) --config $(CONFIG) --port $(PORT)
@@ -29,20 +38,22 @@ help:
 	@echo "  dashboard:    http://localhost:$(PORT)"
 
 up:
-	@if tmux has-session -t $(SESSION) 2>/dev/null; then \
-	  echo "already up (session '$(SESSION)'). Use 'make restart' or 'make attach'."; exit 0; fi
+	@if lsof -i :$(PORT) -sTCP:LISTEN -t >/dev/null 2>&1; then \
+	  echo "already up — something is listening on :$(PORT). Use 'make restart' or 'make attach'."; exit 0; fi
 	@command -v gh >/dev/null || { echo "!!! gh not found — needed to mint GITHUB_TOKEN (https://cli.github.com)"; exit 1; }
 	@gh auth status >/dev/null 2>&1 || { echo "!!! gh not authenticated — run 'gh auth login --scopes repo,read:org,project'"; exit 1; }
 	@tmux new-session -d -s $(SESSION) -n $(SESSION) '$(LAUNCH)'
 	@sleep 1
-	@echo ">>> started session '$(SESSION)' — dashboard http://localhost:$(PORT) (make attach to see the TUI)"
+	@echo ">>> started tmux session for '$(SESSION)' — dashboard http://localhost:$(PORT) (make attach to see the TUI)"
 
+# Stop by port (robust: the session name may be re-cased by the tmux server),
+# then best-effort kill any session whose name matches SESSION case-insensitively.
 down:
-	@if tmux has-session -t $(SESSION) 2>/dev/null; then \
-	  tmux send-keys -t $(SESSION) C-c 2>/dev/null || true; sleep 1; \
-	  tmux kill-session -t $(SESSION) 2>/dev/null || true; \
-	  echo ">>> stopped session '$(SESSION)'"; \
-	else echo "'$(SESSION)' is not running"; fi
+	@pid=$$(lsof -i :$(PORT) -sTCP:LISTEN -t 2>/dev/null); \
+	if [ -n "$$pid" ]; then echo ">>> stopping detent (pid $$pid on :$(PORT))"; kill -INT $$pid 2>/dev/null || true; sleep 1; fi; \
+	sess=$$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -i '^$(SESSION)$$' | head -1); \
+	if [ -n "$$sess" ]; then tmux kill-session -t "$$sess" 2>/dev/null || true; echo ">>> killed tmux session '$$sess'"; fi; \
+	if [ -z "$$pid$$sess" ]; then echo "nothing on :$(PORT) and no '$(SESSION)' session"; fi
 
 restart: down up
 
@@ -60,7 +71,8 @@ logs:
 	@test -f $(LOG) && tail -f $(LOG) || { echo "no $(LOG) yet — start with 'make up'"; exit 1; }
 
 attach:
-	@tmux attach -t $(SESSION)
+	@sess=$$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -i '^$(SESSION)$$' | head -1); \
+	if [ -n "$$sess" ]; then tmux attach -t "$$sess"; else echo "no '$(SESSION)' session — run 'make up'"; exit 1; fi
 
 doctor:
 	@$(BIN) --config $(CONFIG) doctor
