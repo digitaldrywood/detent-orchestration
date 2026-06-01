@@ -10,6 +10,12 @@ dogfoods itself. The issues Detent works through are its own feature and release
 issues; the PRs you see merged into `digitaldrywood/detent` were opened by agents launched
 from the config in this repo.
 
+> **Use this as a template.** This is a complete, working Detent setup. To stand up
+> your own board, copy `WORKFLOW.md` + `global.yaml` (and the `Makefile`), then follow
+> [Bootstrap On A New Machine](https://github.com/digitaldrywood/detent#bootstrap-on-a-new-machine-humans-and-ai-agents)
+> in the Detent README. New to Detent? Start with the
+> [Detent README](https://github.com/digitaldrywood/detent#readme).
+
 ## What's here
 
 | File | Purpose |
