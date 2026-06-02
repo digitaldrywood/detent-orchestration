@@ -34,8 +34,9 @@ make rebuild   # rebuild the binary from the source clone and restart
 make down      # stop
 ```
 
-`make up` reads `GITHUB_TOKEN` at runtime via `gh auth token` — no secret is ever stored in
-this repo. It launches the installed `detent` binary with `--config ~/.detent/global.yaml`.
+`make up` reads `GITHUB_TOKEN` at runtime via `gh auth token`; no secret is ever stored in
+this repo. It launches the installed `detent` binary with `ENV=dev`,
+`LOG_LEVEL=debug`, and `--config ~/.detent/global.yaml`.
 
 ## How the config and runtime state are wired
 

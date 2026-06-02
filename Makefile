@@ -21,7 +21,7 @@ LOG_LEVEL ?= debug
 LOG := $(HOME)/.detent/detent.log
 
 # Single source of truth for the launch command (token is read at runtime, never stored).
-LAUNCH = DETENT_ENV=$(ENV) DETENT_LOG_LEVEL=$(LOG_LEVEL) GITHUB_TOKEN="$$(gh auth token)" $(BIN) --config $(CONFIG) --port $(PORT)
+LAUNCH = ENV=$(ENV) LOG_LEVEL=$(LOG_LEVEL) GITHUB_TOKEN="$$(gh auth token)" $(BIN) --config $(CONFIG) --port $(PORT)
 
 help:
 	@echo "Detent orchestration"
