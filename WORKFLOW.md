@@ -15,11 +15,14 @@ tracker:
   state_map:
     Cancelled: Done
 polling:
-  # Temporary: bumped 15s -> 120s to break the GraphQL-budget death spiral.
-  # The bloated board scan + per-poll epic-children fanout burns the full
-  # 5000/hr at 15s cadence. Restore to 15000 once #302 (poll only actionable
-  # columns) and #303 (epic auto-close JIT) land and cut per-poll cost.
-  interval_ms: 120000
+  # MEASURED: one board poll costs ~552 GraphQL points on a full board
+  # (rateLimit{cost}), ~11 pts/item via deep subIssues/trackedIssues/fieldValues
+  # nesting. At 5000/hr that's only ~9 polls/hr max. Frequency trades directly
+  # against the agents' budget, so park polling at 10 min until #313 guts the
+  # poll query (item+Status only) + moves REST-able reads to the REST budget.
+  # Restore to a normal cadence once #313 lands. (#302/#303 helped but the
+  # per-item nesting cost is the real bomb.)
+  interval_ms: 600000
 server:
   host: 0.0.0.0
   port: 4000
@@ -35,7 +38,12 @@ agent:
   # DoH + gh subprocess calls open many short-lived sockets per agent with no
   # keep-alive; 5 concurrent exhausted the macOS ephemeral-port range). Restore
   # to 5 after the host socket tuning (msl + portrange) is in place.
-  max_concurrent_agents: 3
+  # Further cut 3 -> 1: measurement showed the orchestrator polling is cheap
+  # (actionable-only since #310), and the dominant GraphQL consumer is the
+  # AGENTS' ungoverned gh/ProjectV2 calls (merge, board-status writes, CI watch).
+  # Serializing to 1 agent stops the 5000/hr exhaustion while the fix set lands.
+  # Restore once #304 (cost observability) shows agent gh usage is governed.
+  max_concurrent_agents: 1
   max_concurrent_agents_by_state:
     Merging: 1
   dispatch_priority_by_state:
