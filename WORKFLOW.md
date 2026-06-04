@@ -15,7 +15,11 @@ tracker:
   state_map:
     Cancelled: Done
 polling:
-  interval_ms: 15000
+  # Temporary: bumped 15s -> 120s to break the GraphQL-budget death spiral.
+  # The bloated board scan + per-poll epic-children fanout burns the full
+  # 5000/hr at 15s cadence. Restore to 15000 once #302 (poll only actionable
+  # columns) and #303 (epic auto-close JIT) land and cut per-poll cost.
+  interval_ms: 120000
 server:
   host: 0.0.0.0
   port: 4000
@@ -27,7 +31,11 @@ agent:
   # rebase/push/merge so concurrent merge candidates do not invalidate
   # each other's CI. States omitted from max_concurrent_agents_by_state
   # share the global pool.
-  max_concurrent_agents: 5
+  # Temporarily 5 -> 3 to cut peak host TCP connection churn (Codex streaming +
+  # DoH + gh subprocess calls open many short-lived sockets per agent with no
+  # keep-alive; 5 concurrent exhausted the macOS ephemeral-port range). Restore
+  # to 5 after the host socket tuning (msl + portrange) is in place.
+  max_concurrent_agents: 3
   max_concurrent_agents_by_state:
     Merging: 1
   dispatch_priority_by_state:
