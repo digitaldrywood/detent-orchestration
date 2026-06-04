@@ -293,17 +293,49 @@ For `Merging`:
 2. Rebase the PR branch onto current `origin/main`.
 3. Run the validation gate locally one more time on the rebased branch.
 4. Push the rebased branch.
-5. Watch CI (`gh pr checks --watch`) and wait for every check to pass.
+5. Watch CI via the REST check-runs API (cheap; preserves the GraphQL
+   budget): poll `gh api repos/<owner>/<repo>/commits/<HEAD_SHA>/check-runs`
+   (or `gh run watch <run-id> --exit-status`) — **do NOT** use
+   `gh pr checks --watch` or `gh pr view` in a loop. Wait for every check
+   to pass on the current HEAD sha.
 6. Confirm all automated reviews are addressed: every reviewer is
    `APPROVED`, no `CHANGES_REQUESTED` is open, and no pending bot review
    is in flight.
-7. Merge with `gh pr merge --squash`.
+7. Merge via the REST API (not `gh pr merge`, which routes through
+   GraphQL): `gh api --method PUT repos/<owner>/<repo>/pulls/<N>/merge
+   -f merge_method=squash -f sha=<HEAD_SHA>`.
 8. Move the GitHub issue to `Done`.
 
 If any merging step is blocked by required human approval, failed CI,
 missing auth, or another external blocker, keep the issue in `Merging`
 and update the `## Codex Workpad` with the exact blocker. Do not move
 back to `Todo` or `Human Review`.
+
+## GraphQL Budget Discipline
+
+GitHub meters **two separate** hourly budgets per user: ~5,000 **GraphQL
+points/hr** and ~5,000 **REST requests/hr**. Detent's orchestrator already
+spends the GraphQL budget on ProjectV2 board polling (Projects v2 is
+GraphQL-only). **Every agent must keep its own work on the REST budget** so
+the two don't collide and exhaust the shared GraphQL pool.
+
+Rules for agent `gh` usage:
+
+- **CI status / watching:** use REST — `gh api repos/<o>/<r>/commits/<sha>/check-runs`
+  or `gh run watch <run-id> --exit-status`. **Never** loop `gh pr checks --watch`
+  or `gh pr view` to poll CI; those route through GraphQL and a multi-minute
+  poll loop can burn hundreds of points per PR.
+- **Merging:** `gh api --method PUT repos/<o>/<r>/pulls/<N>/merge -f merge_method=squash -f sha=<sha>`
+  (REST). `gh pr merge` uses GraphQL.
+- **Reading PR/issue/comment/review state:** prefer `gh api repos/...` REST
+  endpoints over `gh pr view --json` / `gh issue view --json` (GraphQL).
+- **Reserve GraphQL strictly** for the operations that have no REST
+  equivalent: ProjectV2 **Status/Priority** field reads and writes. Do only
+  the field mutation you need; never re-fetch the whole board (the
+  orchestrator tracks state).
+- If you see `API rate limit exceeded` on a GraphQL call, the REST budget is
+  almost certainly still healthy — switch the operation to REST rather than
+  waiting for the hourly reset.
 
 ## Mandatory Pre-Review Gate
 
