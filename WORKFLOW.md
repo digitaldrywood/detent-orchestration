@@ -32,16 +32,11 @@ agent:
   # rebase/push/merge so concurrent merge candidates do not invalidate
   # each other's CI. States omitted from max_concurrent_agents_by_state
   # share the global pool.
-  # Temporarily 5 -> 3 to cut peak host TCP connection churn (Codex streaming +
-  # DoH + gh subprocess calls open many short-lived sockets per agent with no
-  # keep-alive; 5 concurrent exhausted the macOS ephemeral-port range). Restore
-  # to 5 after the host socket tuning (msl + portrange) is in place.
-  # Further cut 3 -> 1: measurement showed the orchestrator polling is cheap
-  # (actionable-only since #310), and the dominant GraphQL consumer is the
-  # AGENTS' ungoverned gh/ProjectV2 calls (merge, board-status writes, CI watch).
-  # Serializing to 1 agent stops the 5000/hr exhaustion while the fix set lands.
-  # Restore once #304 (cost observability) shows agent gh usage is governed.
-  max_concurrent_agents: 1
+  # Restored to 5 (full throughput): the two root causes of the earlier
+  # exhaustion are fixed — host TCP/socket churn (sysctl msl=1000 +
+  # portrange.first=16384 + #311 process-group reaping) and the 552-pt board
+  # poll (#313/#314 gutted it to single-digit points; budget holds at ~5000).
+  max_concurrent_agents: 5
   max_concurrent_agents_by_state:
     Merging: 1
   dispatch_priority_by_state:
