@@ -15,14 +15,12 @@ tracker:
   state_map:
     Cancelled: Done
 polling:
-  # MEASURED: one board poll costs ~552 GraphQL points on a full board
-  # (rateLimit{cost}), ~11 pts/item via deep subIssues/trackedIssues/fieldValues
-  # nesting. At 5000/hr that's only ~9 polls/hr max. Frequency trades directly
-  # against the agents' budget, so park polling at 10 min until #313 guts the
-  # poll query (item+Status only) + moves REST-able reads to the REST budget.
-  # Restore to a normal cadence once #313 lands. (#302/#303 helped but the
-  # per-item nesting cost is the real bomb.)
-  interval_ms: 600000
+  # The board poll once cost ~552 GraphQL points (deep subIssues/trackedIssues/
+  # fieldValues nesting), exhausting 5000/hr at any cadence. #313 (perf: reduce
+  # github poll cost) gutted the per-poll query to item+Status and moved
+  # REST-able reads to the separate REST budget — measured: poll cost dropped to
+  # single digits and the 5000/hr budget now HOLDS. 2-min cadence is safe again.
+  interval_ms: 120000
 server:
   host: 0.0.0.0
   port: 4000
