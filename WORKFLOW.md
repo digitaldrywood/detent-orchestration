@@ -14,6 +14,12 @@ tracker:
     - Cancelled
   state_map:
     Cancelled: Done
+  dependency_auto_unblock:
+    enabled: true
+    source_states:
+      - Blocked
+    target_state: Todo
+    readiness: terminal_or_merged
 polling:
   # The board poll once cost ~552 GraphQL points (deep subIssues/trackedIssues/
   # fieldValues nesting), exhausting 5000/hr at any cadence. #313 (perf: reduce
@@ -45,6 +51,14 @@ agent:
     - In Progress
     - Todo
   max_turns: 20
+  # Auto-promote Human Review -> Merging after the configured gate passes.
+  # This project does not require a GitHub bot PR review signal for promotion;
+  # CI, no P1 findings, and the quiet period are the promotion criteria.
+  auto_promote:
+    enabled: true
+    quiet_seconds: 600
+    optout_label: requires-human-review
+    allowed_issue_labels: []
 codex:
   command: codex --config shell_environment_policy.inherit=all --config 'model="gpt-5.5"' app-server
   approval_policy: never
@@ -54,6 +68,10 @@ codex:
   thread_sandbox: danger-full-access
   turn_sandbox_policy:
     type: dangerFullAccess
+gate:
+  kind: command
+  run: make check
+  require_automated_review: false
 hooks:
   after_create: |
     SOURCE_REPO=$HOME/projects/digitaldrywood/detent
@@ -137,6 +155,12 @@ current workspace has:
   itself running on `http://127.0.0.1:4000`; do not bind to that port
   from inside the workspace (tests that need a server must use port 0 /
   an ephemeral port).
+- Never stop, restart, signal, kill, replace, or otherwise disrupt the
+  live Detent dogfood process on `127.0.0.1:4000` unless the human
+  explicitly authorizes that exact action in the current conversation.
+  If validation needs a Detent server, start a separate isolated test
+  instance on port 0 or another non-production port with its own config,
+  workspace root, and database.
 
 If any isolation prerequisite is missing, move the issue to `Blocked`
 with the exact blocker and the human action needed. Do not compensate by
@@ -174,8 +198,10 @@ every active state plus `Cancelled -> Done`.
 - `Blocked`: do not code. Detent could not continue because a human
   action or local prerequisite is missing (e.g. an unmerged dependency).
   A human moves the issue back to `Todo` or `Rework` after resolving it.
-- `Human Review`: do not code. Human approval gate. A human moves the
-  issue to `Merging` when the PR is approved and ready to ship.
+- `Human Review`: do not code. PR is ready for review/soak. Detent
+  auto-promotes to `Merging` after CI is green, no P1 bot review findings
+  exist, and the configured quiet period has elapsed unless the issue has
+  the `requires-human-review` opt-out label.
 - `Rework`: address requested changes, then run the full pre-review gate
   again.
 - `Merging`: rebase onto `origin/main`, watch CI, merge once green, then
@@ -282,7 +308,7 @@ For `Rework`:
 For `Merging`:
 
 1. Confirm the linked PR exists and was moved to `Merging` from
-   `Human Review` by a human.
+   `Human Review` by Detent auto-promotion or explicit human action.
 2. Rebase the PR branch onto current `origin/main`.
 3. Run the validation gate locally one more time on the rebased branch.
 4. Push the rebased branch.

@@ -1,8 +1,15 @@
 apiVersion: detent/v1
 kind: GlobalConfig
+env: dev
+log_level: debug
+github_token: gh
+port: 4000
 global:
     max_concurrent_agents: 5
     scheduling: weighted
+    identity:
+        name: corys-mac-studio
+        ownership_mode: assignee
     fair_share:
         half_life: 1h
     startup:
