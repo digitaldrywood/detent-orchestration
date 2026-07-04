@@ -3,7 +3,14 @@ tracker:
   kind: github
   endpoint: https://api.github.com/graphql
   api_key: $GITHUB_TOKEN
-  project_slug: "PVT_kwDODLUOns4BZQtw"
+  github_status_source: label
+  repository: digitaldrywood/detent
+  status_label_prefix: "detent:"
+  write_probe_issue: digitaldrywood/detent#898
+  observed_states:
+    - Backlog
+    - Blocked
+    - Human Review
   active_states:
     - Todo
     - In Progress
@@ -14,11 +21,22 @@ tracker:
     - Cancelled
   state_map:
     Cancelled: Done
+  dependency_auto_unblock:
+    enabled: true
+    source_states:
+      - Blocked
+    target_state: Todo
+    readiness: terminal_or_merged
 polling:
-  interval_ms: 15000
+  # Label-backed status polling uses REST issue/label endpoints. A 2-min
+  # cadence keeps the board responsive while leaving GraphQL budget for
+  # operations that have no REST equivalent.
+  interval_ms: 120000
 server:
   host: 0.0.0.0
   port: 4000
+  kanban:
+    mode: integration
 workspace:
   root: ~/code/detent-workspaces
   source_root: ~/projects/digitaldrywood/detent
@@ -27,6 +45,10 @@ agent:
   # rebase/push/merge so concurrent merge candidates do not invalidate
   # each other's CI. States omitted from max_concurrent_agents_by_state
   # share the global pool.
+  # Restored to 5 (full throughput): the two root causes of the earlier
+  # exhaustion are fixed — host TCP/socket churn (sysctl msl=1000 +
+  # portrange.first=16384 + #311 process-group reaping) and the 552-pt board
+  # poll (#313/#314 gutted it to single-digit points; budget holds at ~5000).
   max_concurrent_agents: 5
   max_concurrent_agents_by_state:
     Merging: 1
@@ -36,6 +58,19 @@ agent:
     - In Progress
     - Todo
   max_turns: 20
+  # Kill runaway sessions at 4x the observed median (7.7M tokens); the worst
+  # outlier hit 55M while p90 is 23M, so this cap only cuts the pathological
+  # tail (doctor runaway_session_tokens finding).
+  max_session_tokens: 30842000
+  # Auto-promote Human Review -> Merging after the configured gate passes.
+  # This project does not require a GitHub bot PR review signal for promotion;
+  # CI and no P1 findings are the promotion criteria. This dogfood project
+  # does not require a minimum dwell time in Human Review.
+  auto_promote:
+    enabled: true
+    quiet_seconds: 0
+    optout_label: requires-human-review
+    allowed_issue_labels: []
 codex:
   command: codex --config shell_environment_policy.inherit=all --config 'model="gpt-5.5"' app-server
   approval_policy: never
@@ -45,6 +80,10 @@ codex:
   thread_sandbox: danger-full-access
   turn_sandbox_policy:
     type: dangerFullAccess
+gate:
+  kind: command
+  run: make check
+  require_automated_review: false
 hooks:
   after_create: |
     SOURCE_REPO=$HOME/projects/digitaldrywood/detent
@@ -67,8 +106,7 @@ hooks:
     # here. This hook now only keeps origin/main fresh and prunes stale state.
 ---
 You are working on **Detent** — a Go agent-orchestrator delivered as a
-single binary — on GitHub issue `{{ issue.identifier }}` in project
-https://github.com/orgs/digitaldrywood/projects/4
+single binary — on GitHub issue `{{ issue.identifier }}`
 (repo `digitaldrywood/detent`).
 
 Detent is now self-hosted: it dispatches the agents that build it. Work
@@ -128,6 +166,12 @@ current workspace has:
   itself running on `http://127.0.0.1:4000`; do not bind to that port
   from inside the workspace (tests that need a server must use port 0 /
   an ephemeral port).
+- Never stop, restart, signal, kill, replace, or otherwise disrupt the
+  live Detent dogfood process on `127.0.0.1:4000` unless the human
+  explicitly authorizes that exact action in the current conversation.
+  If validation needs a Detent server, start a separate isolated test
+  instance on port 0 or another non-production port with its own config,
+  workspace root, and database.
 
 If any isolation prerequisite is missing, move the issue to `Blocked`
 with the exact blocker and the human action needed. Do not compensate by
@@ -135,26 +179,22 @@ sharing port 4000 or editing files outside the worktree.
 
 ## Detent Tracker Interaction
 
-Detent polls the GitHub Project and spawns this session, but it does
-not transition the card's Status or post the workpad comment on your
-behalf. You own the issue lifecycle. Use the `github_graphql` tool to:
+Detent polls GitHub repository issues by configured Detent status labels
+and spawns this session, but it does not transition the issue status or
+post the workpad comment on your behalf. You own the issue lifecycle.
+Use GitHub APIs to:
 
 1. Post the persistent `## Codex Workpad` comment on the underlying
-   issue (subjectId = `{{ issue.id }}`, via `addComment`).
-2. Look up the configured project's Status field options:
-     `node(id: "{{ tracker.project_slug }}") { ... on ProjectV2 {
-       field(name: "Status") { ... on ProjectV2SingleSelectField {
-         id options { id name } } } } }`
-3. Find this issue's project item id by querying
-   `node(id: "{{ issue.id }}") { ... on Issue { projectItems(first: 100)
-   { nodes { id project { id } } } } }` and picking the node whose
-   `project.id` matches `{{ tracker.project_slug }}`.
-4. Call `updateProjectV2ItemFieldValue` with that item id, the Status
-   field id, and the option id for the target state.
+   issue.
+2. Move issue status by keeping exactly one configured `detent:*` status
+   label on the issue. Remove any existing `detent:*` status label, then
+   add the target status label.
 
 Translate Detent state names through this config's `state_map` before
-calling the mutation. The current config uses identity translation for
-every active state plus `Cancelled -> Done`.
+choosing the label. The current config uses identity translation for
+every active state plus `Cancelled -> Done`, so `Todo` maps to
+`detent:todo`, `In Progress` maps to `detent:in-progress`, and
+`Cancelled` maps to `detent:done`.
 
 ## Workflow States
 
@@ -162,11 +202,18 @@ every active state plus `Cancelled -> Done`.
   to `Todo` (gates: dependencies must be merged first).
 - `Todo`: move to `In Progress`, then begin implementation.
 - `In Progress`: continue implementation.
-- `Blocked`: do not code. Detent could not continue because a human
-  action or local prerequisite is missing (e.g. an unmerged dependency).
-  A human moves the issue back to `Todo` or `Rework` after resolving it.
-- `Human Review`: do not code. Human approval gate. A human moves the
-  issue to `Merging` when the PR is approved and ready to ship.
+- `Blocked`: do not code. Use only when Detent cannot continue because
+  a true human action or local prerequisite is missing. If the blocker is
+  dependency-based, the issue body must contain a machine-readable
+  `Depends on:` or `Blocked by:` line naming the GitHub issue or PR
+  references, not only Workpad prose. If the issue already has an open PR
+  and the blocker is merge conflicts, stale/missing current-head CI, or
+  other agent-recoverable PR maintenance, move it to `Rework` instead of
+  `Blocked`.
+- `Human Review`: do not code. PR is ready for review/soak. Detent
+  auto-promotes to `Merging` after CI is green, no P1 bot review findings
+  exist, and the configured quiet period has elapsed unless the issue has
+  the `requires-human-review` opt-out label.
 - `Rework`: address requested changes, then run the full pre-review gate
   again.
 - `Merging`: rebase onto `origin/main`, watch CI, merge once green, then
@@ -186,6 +233,28 @@ while merge candidates wait for CI or a clean base branch.
 A stuck or misconfigured agent should be moved to `Blocked`, not
 `Human Review`. Use `Blocked` for "Detent can't continue without a
 human"; use `Human Review` only for "the PR is ready for approval".
+
+## Blocked Handoff Contract
+
+Blocked items must be recoverable by Detent when the blocker clears.
+Before moving an issue to `Blocked`:
+
+- If waiting on another GitHub issue or PR, ensure the issue body contains
+  a parseable line such as `Depends on: #415` or
+  `Blocked by: digitaldrywood/detent#415`. Do not put dependency
+  references only in the `## Codex Workpad` comment.
+- If the blocked item has an open PR and Detent can plausibly repair it
+  by rebasing, resolving conflicts, pushing a retrigger commit, or
+  rerunning validation, move it to `Rework` and record the exact recovery
+  action in the Workpad. Do not leave agent-recoverable PR work in
+  `Blocked`.
+- Use `Blocked` without dependency metadata only for true human-only
+  blockers such as missing credentials, missing local tools, unavailable
+  external services, ambiguous product direction, or explicit human
+  approval requirements.
+- In the Workpad `### Blockers` section, include both the human-readable
+  explanation and the exact structured references already present in the
+  issue body.
 
 ## Operating Rules
 
@@ -240,8 +309,9 @@ For `Todo`:
 2. Create or update the `## Codex Workpad` comment (plan + acceptance).
 3. Fetch latest `origin/main`; confirm the worktree branch is based on
    current `origin/main`. Confirm every **Depends on:** issue is already
-   merged (its code is present on `origin/main`); if not, move to
-   `Blocked`.
+   merged (its code is present on `origin/main`); if not, ensure the
+   dependency is recorded as a parseable `Depends on:` or `Blocked by:`
+   line in the issue body, then move to `Blocked`.
 4. For a bug/behavior change, reproduce or confirm the behavior before
    changing code.
 5. Implement the smallest complete change that satisfies the issue.
@@ -273,21 +343,53 @@ For `Rework`:
 For `Merging`:
 
 1. Confirm the linked PR exists and was moved to `Merging` from
-   `Human Review` by a human.
+   `Human Review` by Detent auto-promotion or explicit human action.
 2. Rebase the PR branch onto current `origin/main`.
 3. Run the validation gate locally one more time on the rebased branch.
+   This is a fast pre-push guard; it does not replace current-head GitHub CI.
 4. Push the rebased branch.
-5. Watch CI (`gh pr checks --watch`) and wait for every check to pass.
+5. Watch CI via the REST check-runs API (cheap; preserves the GraphQL
+   budget): poll `gh api repos/<owner>/<repo>/commits/<HEAD_SHA>/check-runs`
+   (or `gh run watch <run-id> --exit-status`) — **do NOT** use
+   `gh pr checks --watch` or `gh pr view` in a loop. Wait for every check
+   to pass on the current HEAD sha.
 6. Confirm all automated reviews are addressed: every reviewer is
    `APPROVED`, no `CHANGES_REQUESTED` is open, and no pending bot review
    is in flight.
-7. Merge with `gh pr merge --squash`.
+7. Merge via the REST API (not `gh pr merge`, which routes through
+   GraphQL): `gh api --method PUT repos/<owner>/<repo>/pulls/<N>/merge
+   -f merge_method=squash -f sha=<HEAD_SHA>`.
 8. Move the GitHub issue to `Done`.
 
 If any merging step is blocked by required human approval, failed CI,
 missing auth, or another external blocker, keep the issue in `Merging`
 and update the `## Codex Workpad` with the exact blocker. Do not move
 back to `Todo` or `Human Review`.
+
+## GraphQL Budget Discipline
+
+GitHub meters **two separate** hourly budgets per user: ~5,000 **GraphQL
+points/hr** and ~5,000 **REST requests/hr**. Detent's orchestrator polls
+issue status through GitHub's REST issue and label endpoints. **Every
+agent must keep routine work on the REST budget** so GraphQL remains
+available for operations that have no REST equivalent.
+
+Rules for agent `gh` usage:
+
+- **CI status / watching:** use REST — `gh api repos/<o>/<r>/commits/<sha>/check-runs`
+  or `gh run watch <run-id> --exit-status`. **Never** loop `gh pr checks --watch`
+  or `gh pr view` to poll CI; those route through GraphQL and a multi-minute
+  poll loop can burn hundreds of points per PR.
+- **Merging:** `gh api --method PUT repos/<o>/<r>/pulls/<N>/merge -f merge_method=squash -f sha=<sha>`
+  (REST). `gh pr merge` uses GraphQL.
+- **Reading PR/issue/comment/review state:** prefer `gh api repos/...` REST
+  endpoints over `gh pr view --json` / `gh issue view --json` (GraphQL).
+- **Reserve GraphQL strictly** for operations that have no REST
+  equivalent. Status changes in this workflow are label updates and should
+  use REST.
+- If you see `API rate limit exceeded` on a GraphQL call, the REST budget is
+  almost certainly still healthy — switch the operation to REST rather than
+  waiting for the hourly reset.
 
 ## Mandatory Pre-Review Gate
 
@@ -318,6 +420,11 @@ If any required gate cannot run because of missing tools, auth, secrets,
 or external access, move the issue to `Blocked`, not `Human Review`.
 Record the exact failed command, the blocker, and the human action
 needed in the `## Codex Workpad`.
+
+If the gate fails because the PR is out of date, merge-conflicting, or
+missing checks on a current head that the agent can update by pushing,
+move the issue to `Rework` and perform that recovery there. Reserve
+`Blocked` for cases where the agent cannot take the next action.
 
 ## Cleanup After Merge Or Abandonment
 

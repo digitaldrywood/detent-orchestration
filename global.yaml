@@ -1,12 +1,19 @@
 apiVersion: detent/v1
 kind: GlobalConfig
+env: dev
+log_level: debug
+github_token: gh
+port: 4000
 global:
     max_concurrent_agents: 5
     scheduling: weighted
+    identity:
+        name: corys-mac-studio
+        ownership_mode: assignee
     fair_share:
         half_life: 1h
     startup:
-        jitter_seconds: 10
+        jitter_seconds: 0
         max_spawn_per_second: 2
 projects:
     - id: detent
@@ -14,3 +21,8 @@ projects:
       workdir: ~/code/detent-workspaces
       weight: 1
       priority: 0
+    - id: gopher-ai
+      workflow: /Users/corylanou/projects/gopherguides/gopher-ai/WORKFLOW.md
+      workdir: /Users/corylanou/projects/gopherguides/gopher-ai
+      weight: 1
+      priority: 3
