@@ -58,6 +58,10 @@ agent:
     - In Progress
     - Todo
   max_turns: 20
+  # Kill runaway sessions at 4x the observed median (7.7M tokens); the worst
+  # outlier hit 55M while p90 is 23M, so this cap only cuts the pathological
+  # tail (doctor runaway_session_tokens finding).
+  max_session_tokens: 30842000
   # Auto-promote Human Review -> Merging after the configured gate passes.
   # This project does not require a GitHub bot PR review signal for promotion;
   # CI and no P1 findings are the promotion criteria. This dogfood project
