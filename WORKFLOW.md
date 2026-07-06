@@ -6,7 +6,6 @@ tracker:
   github_status_source: label
   repository: digitaldrywood/detent
   status_label_prefix: "detent:"
-  write_probe_issue: digitaldrywood/detent#898
   observed_states:
     - Backlog
     - Blocked
