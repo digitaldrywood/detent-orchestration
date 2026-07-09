@@ -78,12 +78,13 @@ agent:
     optout_label: requires-human-review
     allowed_issue_labels: []
 codex:
-  # Pinned so session telemetry records the model for pricing (doctor
-  # empty_model_telemetry finding). Trade-off: pins break if OpenAI retires
-  # the model — bump this when the Codex CLI default generation changes.
-  # Reasoning effort is left at the provider default; not all models accept
-  # a model_reasoning_effort override.
-  command: codex --config shell_environment_policy.inherit=all --config 'model="gpt-5.6-sol"' app-server
+  # Deliberately unpinned: the Codex CLI default manages the model, so this
+  # survives provider model retirements and picks up generation upgrades
+  # automatically. Telemetry resolves the effective model from the session
+  # since #1103, so pricing attribution works without a pin. Reasoning
+  # effort is left at the provider default; not all models accept a
+  # model_reasoning_effort override.
+  command: codex --config shell_environment_policy.inherit=all app-server
   approval_policy: never
   # Full access: agents run git fetch/worktree against the source repo,
   # need network for `go mod download`, and write to the shared Go build/module
