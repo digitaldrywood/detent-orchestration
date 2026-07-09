@@ -56,18 +56,25 @@ agent:
     - Rework
     - In Progress
     - Todo
+  # hotfix label jumps the queue within a state — used to cut hotfix releases.
+  dispatch_priority_by_label:
+    - hotfix
+    - bug
   max_turns: 20
   # Kill runaway sessions at 4x the observed median (7.7M tokens); the worst
   # outlier hit 55M while p90 is 23M, so this cap only cuts the pathological
   # tail (doctor runaway_session_tokens finding).
   max_session_tokens: 30842000
-  # Auto-promote Human Review -> Merging after the configured gate passes.
-  # This project does not require a GitHub bot PR review signal for promotion;
-  # CI and no P1 findings are the promotion criteria. This dogfood project
-  # does not require a minimum dwell time in Human Review.
+  # This project's review-flow choice: no human review. Completed issues wait
+  # in In Progress for the PR gate (CI green), then promote directly to
+  # Merging (gate_wait_state: source). Human Review is never entered unless
+  # the optout label is applied or the gate wait times out. This project does
+  # not require a GitHub bot PR review signal for promotion; CI and no P1
+  # findings are the promotion criteria.
   auto_promote:
     enabled: true
     quiet_seconds: 0
+    gate_wait_state: source
     optout_label: requires-human-review
     allowed_issue_labels: []
 codex:
@@ -179,21 +186,82 @@ sharing port 4000 or editing files outside the worktree.
 ## Detent Tracker Interaction
 
 Detent polls GitHub repository issues by configured Detent status labels
-and spawns this session, but it does not transition the issue status or
-post the workpad comment on your behalf. You own the issue lifecycle.
-Use GitHub APIs to:
+and spawns this session, but it does not post the workpad comment on
+your behalf. You own the workpad and a scoped part of the issue
+lifecycle. Use GitHub APIs to:
 
 1. Post the persistent `## Codex Workpad` comment on the underlying
    issue.
-2. Move issue status by keeping exactly one configured `detent:*` status
-   label on the issue. Remove any existing `detent:*` status label, then
-   add the target status label.
+2. Move issue status **only** for these transitions, by keeping exactly
+   one configured `detent:*` status label on the issue (remove any
+   existing `detent:*` status label, then add the target label):
+   `Todo -> In Progress`, `Rework -> In Progress`, any state ->
+   `Blocked`, and `Merging -> Done` after a merge.
+
+Never apply `detent:human-review` yourself. On successful completion,
+leave the issue in `In Progress` and signal completion through the
+Workpad `detent-status` block (below); Detent watches the PR gate and
+promotes the issue to `Merging` itself. Promotion to `Merging` and any
+entry into `Human Review` are Detent's transitions, not yours.
 
 Translate Detent state names through this config's `state_map` before
 choosing the label. The current config uses identity translation for
 every active state plus `Cancelled -> Done`, so `Todo` maps to
 `detent:todo`, `In Progress` maps to `detent:in-progress`, and
 `Cancelled` maps to `detent:done`.
+
+## Workpad Status Contract
+
+Every Workpad update must include exactly one `detent-status` fenced
+block. Detent reads status, blocker, and human-action declarations from
+that block; narrative sentences are never read as signals. `status`
+must be one of `in_progress`, `blocked`, or `complete` — no other value
+is valid.
+
+While working:
+
+```detent-status
+schema: 1
+status: in_progress
+blockers: []
+human_action: null
+```
+
+On successful completion (PR open, not draft, references the issue,
+validation green, no actionable review comments):
+
+```detent-status
+schema: 1
+status: complete
+blockers: []
+human_action: null
+```
+
+For dependency blockers, use this order:
+
+1. Create GitHub's native `blocked_by` dependency relation.
+
+```sh
+BLOCKED_NUMBER=<blocked-issue-number>
+BLOCKER_NUMBER=<blocker-issue-number>
+BLOCKER_ID="$(gh api repos/{owner}/{repo}/issues/$BLOCKER_NUMBER --jq '.id')"
+gh api --method POST "repos/{owner}/{repo}/issues/$BLOCKED_NUMBER/dependencies/blocked_by" -F issue_id="$BLOCKER_ID"
+```
+
+2. Declare the blocker in the Workpad status block.
+
+```detent-status
+schema: 1
+status: blocked
+blockers:
+  - ref: "owner/repo#123"
+    reason: "waiting for the dependency to merge"
+human_action: null
+```
+
+3. Legacy fallback during the deprecation window: if native dependencies
+   are unavailable, keep a machine-readable issue-body line such as
+   `Blocked by: #123` or `Depends on: owner/repo#123`.
 
 ## Workflow States
 
@@ -209,10 +277,12 @@ every active state plus `Cancelled -> Done`, so `Todo` maps to
   and the blocker is merge conflicts, stale/missing current-head CI, or
   other agent-recoverable PR maintenance, move it to `Rework` instead of
   `Blocked`.
-- `Human Review`: do not code. PR is ready for review/soak. Detent
-  auto-promotes to `Merging` after CI is green, no P1 bot review findings
-  exist, and the configured quiet period has elapsed unless the issue has
-  the `requires-human-review` opt-out label.
+- `Human Review`: do not code, and never enter it yourself. This
+  project's configured flow skips human review: completed issues stay in
+  `In Progress` while Detent watches the PR gate, then Detent promotes
+  them directly to `Merging` (CI green, no P1 bot review findings). An
+  issue appears in `Human Review` only when a human applies the
+  `requires-human-review` opt-out label or the gate wait times out.
 - `Rework`: address requested changes, then run the full pre-review gate
   again.
 - `Merging`: rebase onto `origin/main`, watch CI, merge once green, then
@@ -229,9 +299,10 @@ Do not cap `Todo`, `In Progress`, or `Rework`. Those states share the
 global `agent.max_concurrent_agents` pool so Detent keeps workers busy
 while merge candidates wait for CI or a clean base branch.
 
-A stuck or misconfigured agent should be moved to `Blocked`, not
+A stuck or misconfigured agent should be moved to `Blocked`, never
 `Human Review`. Use `Blocked` for "Detent can't continue without a
-human"; use `Human Review` only for "the PR is ready for approval".
+human". "The PR is ready" is signaled by `status: complete` in the
+Workpad while the issue stays in `In Progress` — not by any label move.
 
 ## Blocked Handoff Contract
 
@@ -259,8 +330,9 @@ Before moving an issue to `Blocked`:
 
 1. Keep a single persistent GitHub issue comment headed
    `## Codex Workpad`. Use it for the plan, acceptance criteria,
-   validation evidence, blockers, and final handoff notes. Do not
-   scatter progress across multiple comments.
+   validation evidence, blockers, and final handoff notes, and include
+   exactly one `detent-status` block (see Workpad Status Contract) in
+   every update. Do not scatter progress across multiple comments.
 2. Work in the Detent-created worktree only.
 3. Keep changes scoped to the GitHub issue. Respect the issue's
    **Depends on:** line — if a dependency PR is not merged into
@@ -320,15 +392,23 @@ For `Todo`:
 9. Open or update a GitHub PR, filling the PR template (Summary,
    `Fixes #N`, Test Plan).
 10. Run the pre-review gate below.
-11. Only after the pre-review gate passes, move the issue to
-    `Human Review`.
+11. Do NOT move the issue to `Human Review`. Leave the issue in
+    `In Progress` and update the Workpad `detent-status` block to
+    `status: complete` with `blockers: []` only after the pre-review
+    gate passes. Detent auto-promotes the issue directly to `Merging`
+    when the PR gate (CI) is green.
 
 For `In Progress`:
 
-1. Re-read the issue, PR, comments, and `## Codex Workpad`.
+1. Re-read the issue, PR, comments, and `## Codex Workpad`, including
+   the `detent-status` block.
 2. Continue from the current repository and Project state.
-3. If implementation is complete, run the pre-review gate before moving
-   to `Human Review`.
+3. If implementation is complete, run the pre-review gate, then update
+   the Workpad `detent-status` block to `status: complete` with
+   `blockers: []` and `human_action: null` only when the gate passes.
+   Do NOT move the issue to `Human Review`; leave it in `In Progress`
+   and let Detent auto-promote it to `Merging` once the PR gate is
+   green.
 
 For `Rework`:
 
@@ -337,12 +417,16 @@ For `Rework`:
 3. Fix the requested changes.
 4. Push updates to the PR.
 5. Run the full pre-review gate again.
-6. Only after the gate passes, move the issue back to `Human Review`.
+6. When the gate passes, update the Workpad `detent-status` block to
+   `status: complete` and leave the issue in `In Progress`; Detent
+   auto-promotes it back to `Merging` once the PR gate is green. Do NOT
+   move it to `Human Review`.
 
 For `Merging`:
 
-1. Confirm the linked PR exists and was moved to `Merging` from
-   `Human Review` by Detent auto-promotion or explicit human action.
+1. Confirm the linked PR exists and the issue was moved to `Merging` by
+   Detent auto-promotion (from the `In Progress` gate wait) or explicit
+   human action.
 2. Rebase the PR branch onto current `origin/main`.
 3. Run the validation gate locally one more time on the rebased branch.
    This is a fast pre-push guard; it does not replace current-head GitHub CI.
@@ -392,8 +476,8 @@ Rules for agent `gh` usage:
 
 ## Mandatory Pre-Review Gate
 
-Required for every Detent item before moving the issue to
-`Human Review`.
+Required for every Detent item before declaring `status: complete` in
+the Workpad `detent-status` block.
 
 1. Confirm there is an open GitHub PR for the branch.
 2. Run the validation gate (above). Every step must pass. Treat any
@@ -405,10 +489,11 @@ Required for every Detent item before moving the issue to
 5. Update the `## Codex Workpad` with the gate result, the tests added
    or updated, and any unresolved blockers.
 6. If the PR is in draft, mark it ready (`gh pr ready <num>`) —
-   idempotent. Always run it before step 7 so PR draft state and GitHub
-   `Human Review` never disagree. Humans never mark Detent PRs ready;
+   idempotent. Always run it before step 7 so PR draft state and the
+   completion signal never disagree. Humans never mark Detent PRs ready;
    Detent does.
-7. Move the issue to `Human Review` only when all are true:
+7. Set `status: complete` in the Workpad `detent-status` block only when
+   all are true (the issue stays in `In Progress`):
    - PR is open and references the issue (`Fixes #N`).
    - PR is not in draft.
    - The validation gate passed after the latest meaningful code change.
@@ -416,9 +501,10 @@ Required for every Detent item before moving the issue to
    - No actionable review comments remain unaddressed or unexplained.
 
 If any required gate cannot run because of missing tools, auth, secrets,
-or external access, move the issue to `Blocked`, not `Human Review`.
-Record the exact failed command, the blocker, and the human action
-needed in the `## Codex Workpad`.
+or external access, move the issue to `Blocked` and keep the Workpad
+status `blocked` — never declare `complete`. Record the exact failed
+command, the blocker, and the human action needed in the
+`## Codex Workpad`.
 
 If the gate fails because the PR is out of date, merge-conflicting, or
 missing checks on a current head that the agent can update by pushing,
