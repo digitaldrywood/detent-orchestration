@@ -120,6 +120,28 @@ hooks:
       [ "$_b" = "$BRANCH_NAME" ] && continue
       git -C "$SOURCE_REPO" branch -D "$_b" >/dev/null 2>&1 || true
     done
+    # Drop orphaned stash entries left by finished issues. Stashes are
+    # repo-global (one refs/stash shared by every worktree) and survive
+    # `git worktree remove`, so a stash an agent created and never dropped
+    # lingers in the source repo forever. Sweep any stash recorded on a
+    # detent/* branch that no longer exists locally; live branches (and
+    # therefore in-flight agents' stashes) are untouched, as are stashes on
+    # non-detent branches such as main. Iterate from the highest stash index
+    # down so drops never shift the indices still to be visited.
+    _i="$(git -C "$SOURCE_REPO" stash list 2>/dev/null | wc -l | tr -d ' ')"
+    while [ "$_i" -gt 0 ]; do
+      _i=$((_i - 1))
+      _subj="$(git -C "$SOURCE_REPO" stash list --format='%gs' | sed -n "$((_i + 1))p")"
+      _sbranch="${_subj#WIP on }"
+      _sbranch="${_sbranch#On }"
+      _sbranch="${_sbranch%%:*}"
+      case "$_sbranch" in
+        (detent/*)
+          git -C "$SOURCE_REPO" show-ref --verify --quiet "refs/heads/$_sbranch" ||
+            git -C "$SOURCE_REPO" stash drop "stash@{$_i}" >/dev/null 2>&1 || true
+          ;;
+      esac
+    done
     # The Go workspace backend creates the worktree natively (git worktree add)
     # from workspace.source_root before this hook runs, so we no longer add it
     # here. This hook now only keeps origin/main fresh and prunes stale state.
@@ -367,6 +389,14 @@ Before moving an issue to `Blocked`:
    is green before pushing.
 9. If you discover meaningful out-of-scope work, file a separate GitHub
    issue in `Backlog` rather than expanding the current issue.
+10. Never use `git stash` in the worktree. Stashes are repo-global (one
+    `refs/stash` shared by every worktree of the source repo), so they
+    leak into shared state, collide with other agents, and outlive your
+    worktree. If a rebase, sync, or restart needs a clean tree, commit
+    your WIP to the issue branch (`git commit -m "wip: <what>"`) and
+    squash or amend it away before the final push. If you did create a
+    stash despite this rule, drop it before finishing (see Cleanup After
+    Merge Or Abandonment).
 
 ## Validation Gate
 
@@ -528,6 +558,12 @@ move the issue to `Rework` and perform that recovery there. Reserve
 
 Clean up workspace-owned resources once an issue is merged or abandoned:
 
+- Drop any stash entries you created for this issue **before** removing
+  the worktree — `git worktree remove` does not delete stashes, and they
+  land in the source repo's shared stash list. Find yours with
+  `git stash list` (entries recorded `On detent/<issue-id>` or naming
+  your issue) and `git stash drop` each one. Do not touch stash entries
+  belonging to other branches.
 - Remove the git worktree from the source repo with
   `git -C $HOME/projects/digitaldrywood/detent worktree remove
   <workspace>` when no process is using it, then
