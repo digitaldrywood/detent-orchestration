@@ -64,6 +64,10 @@ agent:
     - priority
     - bug
   max_turns: 20
+  # Trial: reattach orphaned provider threads on restart (detent#1155/PR #1175)
+  # instead of fresh continuations — falls back safely if resume fails.
+  resume_orphaned_sessions: true
+  experimental_thread_resume: true
   # Kill runaway sessions at 4x the observed median (7.7M tokens); the worst
   # outlier hit 55M while p90 is 23M, so this cap only cuts the pathological
   # tail (doctor runaway_session_tokens finding).
