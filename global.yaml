@@ -6,7 +6,9 @@ github_token: gh
 port: 4000
 global:
     max_concurrent_agents: 5
-    scheduling: weighted
+    # strict_priority: projects dispatch in ascending priority order — detent
+    # (priority 0) always takes available slots before gopher-ai (priority 3).
+    scheduling: strict_priority
     identity:
         name: corys-mac-studio
         ownership_mode: assignee
