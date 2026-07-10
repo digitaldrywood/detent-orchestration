@@ -57,8 +57,11 @@ agent:
     - In Progress
     - Todo
   # hotfix label jumps the queue within a state — used to cut hotfix releases.
+  # priority marks backlog items that should dispatch ahead of unlabeled work
+  # once promoted to Todo.
   dispatch_priority_by_label:
     - hotfix
+    - priority
     - bug
   max_turns: 20
   # Kill runaway sessions at 4x the observed median (7.7M tokens); the worst
