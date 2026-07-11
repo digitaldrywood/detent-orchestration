@@ -72,6 +72,9 @@ agent:
   # outlier hit 55M while p90 is 23M, so this cap only cuts the pathological
   # tail (doctor runaway_session_tokens finding).
   max_session_tokens: 30842000
+  # Escape hatch for legitimately huge sessions (mega-features at xhigh):
+  # label an issue allow-large-session to lift the cap for its sessions.
+  max_session_token_override_label: allow-large-session
   # This project's review-flow choice: no human review. Completed issues wait
   # in In Progress for the PR gate (CI green), then promote directly to
   # Merging (gate_wait_state: source). Human Review is never entered unless
