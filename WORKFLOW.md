@@ -119,9 +119,15 @@ budget:
   # opened north of $164 before any of it was today's healthy work — the
   # $100 cap was blocking legitimate dispatch on top of yesterday's mess.
   # Revisit back down once #1224/#1229/#1211 land and burn normalizes.
+  # per_issue_max_usd raised 8 -> 25 2026-07-11 PM: two separate xhigh-effort
+  # structural issues (#1224, #1237) both hit the $8 ceiling doing real,
+  # legitimate iterative work with no PR yet to fall back on — the per-issue
+  # cap has no automatic reset, so each one stalls permanently at $8 rather
+  # than cooling down like the daily cap does. $8 was simply too tight for
+  # this project's effort tier, not a fluke either time.
   enabled: true
   per_day_max_usd: 250
-  per_issue_max_usd: 8
+  per_issue_max_usd: 25
   refusal_cooldown_seconds: 3600
 hooks:
   after_create: |
