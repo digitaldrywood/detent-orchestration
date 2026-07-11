@@ -106,6 +106,18 @@ gate:
   kind: command
   run: make check
   require_automated_review: false
+budget:
+  # Enabled 2026-07-11 as an independent circuit breaker against runaway
+  # sessions, orthogonal to the no-progress breaker (which had a real gap,
+  # #1224). Notional pricing under subscription auth (Detent's built-in
+  # default table, falls back to gpt-5.5 rates for gpt-5.6-sol); still
+  # real enough to pace spend and force a cooldown on a burning issue.
+  # This project runs the highest volume in the fleet, so the ceilings are
+  # higher than gopher-ai's.
+  enabled: true
+  per_day_max_usd: 100
+  per_issue_max_usd: 8
+  refusal_cooldown_seconds: 3600
 hooks:
   after_create: |
     SOURCE_REPO=$HOME/projects/digitaldrywood/detent
