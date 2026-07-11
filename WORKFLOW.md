@@ -125,8 +125,13 @@ budget:
   # cap has no automatic reset, so each one stalls permanently at $8 rather
   # than cooling down like the daily cap does. $8 was simply too tight for
   # this project's effort tier, not a fluke either time.
+  # per_day_max_usd raised 250 -> 400 2026-07-11 PM: today's real spend
+  # reached $278 on genuinely productive work (v0.30.0 shipped, #1224/#1227/
+  # #1228/#1229/#1230/#1231 merged, #1233/#1234/#1237/#1239 legitimately
+  # in progress, one session each, no loop pattern) — the operator explicitly
+  # authorized a heavy, unattended work day. Revisit down tomorrow.
   enabled: true
-  per_day_max_usd: 250
+  per_day_max_usd: 400
   per_issue_max_usd: 25
   refusal_cooldown_seconds: 3600
 hooks:
