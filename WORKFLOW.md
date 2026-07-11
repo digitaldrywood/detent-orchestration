@@ -114,8 +114,13 @@ budget:
   # real enough to pace spend and force a cooldown on a burning issue.
   # This project runs the highest volume in the fleet, so the ceilings are
   # higher than gopher-ai's.
+  # per_day_max_usd raised 100 -> 250 2026-07-11 PM: the #213/#214 no-PR
+  # loop straddled the UTC day boundary, so today's real spend already
+  # opened north of $164 before any of it was today's healthy work — the
+  # $100 cap was blocking legitimate dispatch on top of yesterday's mess.
+  # Revisit back down once #1224/#1229/#1211 land and burn normalizes.
   enabled: true
-  per_day_max_usd: 100
+  per_day_max_usd: 250
   per_issue_max_usd: 8
   refusal_cooldown_seconds: 3600
 hooks:
