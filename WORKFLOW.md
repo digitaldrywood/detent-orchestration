@@ -49,13 +49,15 @@ agent:
   # portrange.first=16384 + #311 process-group reaping) and the 552-pt board
   # poll (#313/#314 gutted it to single-digit points; budget holds at ~5000).
   max_concurrent_agents: 5
-  # Spend-progress breaker limit raised from the $3 binary default
-  # 2026-07-12: a single xhigh session costs $5-20, so the default parks
-  # nearly every merge-train-tail issue as a false positive (the breaker
-  # counts only tracker state changes as progress, blind to advancing PRs
-  # — detent#1276). $25 keeps a real runaway brake (~2-3 wasted sessions)
-  # without strangling healthy serialized work. Revisit once #1276 ships.
-  no_progress_spend_limit_usd: 25
+  # Spend-progress breaker DISABLED 2026-07-12 (0 = off, spend_progress.go
+  # gates on limit <= 0): this host runs on a flat Codex subscription, so
+  # every USD figure the breaker computes is notional — it was parking
+  # healthy merge-train-tail work over fake dollars (detent#1276) and
+  # crippled fleet throughput. Real runaway brakes stay on: no-progress
+  # diff-fingerprint parking (#1232), max_session_tokens, and provider
+  # capacity pauses (#1158). Re-enable only with an auth-aware design
+  # (subscription vs metered — see the subscription-mode issue).
+  no_progress_spend_limit_usd: 0
   max_concurrent_agents_by_state:
     Merging: 1
   dispatch_priority_by_state:
@@ -137,7 +139,15 @@ budget:
   # #1228/#1229/#1230/#1231 merged, #1233/#1234/#1237/#1239 legitimately
   # in progress, one session each, no loop pattern) — the operator explicitly
   # authorized a heavy, unattended work day. Revisit down tomorrow.
-  enabled: true
+  # DISABLED 2026-07-12 PM (operator decision): this host runs on a flat
+  # Codex subscription — every USD in these caps is notional, and a full day
+  # of budget refusals (per-issue holds, daily caps consuming FLEET-wide
+  # spend per detent#1279) crippled throughput over money that isn't real.
+  # Dollar budgets are for metered/API auth; on subscription auth the real
+  # constraints are the provider's rolling rate window (capacity pauses,
+  # #1158) and outcome-based brakes (no-progress parking #1232,
+  # max_session_tokens). Re-enable only behind an auth-aware design.
+  enabled: false
   per_day_max_usd: 400
   per_issue_max_usd: 25
   refusal_cooldown_seconds: 3600
