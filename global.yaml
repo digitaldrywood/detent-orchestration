@@ -6,8 +6,6 @@ github_token: gh
 port: 4000
 global:
     max_concurrent_agents: 5
-    # strict: projects dispatch in ascending priority order — detent
-    # (priority 0) always takes available slots before gopher-ai (priority 3).
     scheduling: strict
     identity:
         name: corys-mac-studio
@@ -26,5 +24,10 @@ projects:
     - id: gopher-ai
       workflow: /Users/corylanou/projects/gopherguides/gopher-ai/WORKFLOW.md
       workdir: /Users/corylanou/projects/gopherguides/gopher-ai
+      weight: 1
+      priority: 3
+    - id: gopher-corp
+      workflow: /Users/corylanou/projects/gopherguides/corp/WORKFLOW.md
+      workdir: /Users/corylanou/projects/gopherguides/corp
       weight: 1
       priority: 3

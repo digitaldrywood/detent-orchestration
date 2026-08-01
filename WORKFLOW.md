@@ -435,3 +435,91 @@ every small edit.
 
 Operate autonomously end-to-end unless blocked by missing requirements,
 secrets, or permissions.
+
+## Admission Criteria
+
+Used by the scheduled admission pass to decide which `Backlog` issues to
+propose for `Todo`. Detent proposes; a human accepts. Each subsection
+below is a scoring dimension. A proposal must quote the rule it relied
+on, verbatim, and an issue that satisfies no dimension is not proposed.
+
+### Alignment
+
+Admit, in this order of preference:
+
+1. **Fleet-visible defects.** A reproducible failure with a symptom an
+   operator has actually seen: a crash, a killed healthy worker, a
+   contradictory record, a lane that stops advancing. This includes
+   flaky or timing-sensitive tests that fail CI or block a release
+   cut — a red release gate is an operator-visible symptom.
+2. **Safety-critical correctness.** Defects in the orchestrator brakes
+   and dispatch controls named in `CLAUDE.md` —
+   `implement_progress.go`, `backend_capacity.go`,
+   `spend_progress.go`, `ranking.go`. These outrank features even when
+   the symptom is mild.
+3. **Work that removes a standing human step.** Anything that turns a
+   recurring operator intervention into something the system does or
+   surfaces on its own.
+4. **Board legibility where an operator has to guess.** A state the
+   dashboard cannot explain, a number nobody can attribute, a lane whose
+   contents mean two different things.
+
+Do not admit, regardless of how well argued:
+
+5. **Process encoded into the binary.** Criteria, review policy, and
+   orchestration conventions belong in this file or in operator config,
+   never in generic Go.
+6. **Connector or tracker breadth nobody has asked for.** New backends
+   and unused capability surface wait for a project that needs them.
+7. **UI change with no operator complaint and no baseline regression.**
+   Polish is not a priority on its own.
+8. **Umbrella and epic issues.** Flat issues with `Depends on:` lines
+   only. Decompose before admitting anything inside.
+
+### Readiness
+
+An agent must be able to tell when it is done.
+
+A precise symptom plus expected behavior satisfies this. A literal
+"Acceptance criteria" heading is **not** required and its absence is not
+a disqualifier — a bug report with evidence, cause, and file:line is
+ready. What fails this dimension is a wish with no checkable end state.
+
+An issue whose `Depends on:` reference is not merged into `origin/main`
+is not ready; leave it in `Backlog`.
+
+An issue with no `detent-agent` effort block is not ready. Effort is a
+deliberate operator choice, and an issue admitted without one dispatches
+on the fleet default — which silently under-resources exactly the
+subsystem, concurrency, and recovery work that most needs `xhigh`. Leave
+it in `Backlog` and say the block is missing. This gate is unnecessary
+once admission itself recommends an effort and writes it on admit
+(detent#1571); until then it is the only thing preventing an
+effort-less dispatch.
+
+When an issue fails only on readiness, say what is missing rather than
+admitting it.
+
+### Size
+
+Admit only what can plausibly be finished and validated in a single
+agent run. Oversized work is the strongest predictor of a failed
+dispatch, so decompose first and admit the pieces.
+
+### Safety Gates
+
+An issue touching the safety-critical files named under Alignment must
+state, in its own acceptance criteria, the 90% exact-file coverage floor
+and the `FuzzSafetyCriticalOrchestratorBoundaries` seed requirement.
+Without both, it is not ready no matter how important the defect is.
+
+A `hotfix`-labeled issue must carry recorded runtime evidence of the
+failure — log lines, capacity snapshots, database rows — not only a
+narrative root cause, and its regression test must reproduce that
+recorded sequence, not the narrative. A narrative can be wrong while a
+green test built from it passes; that is exactly how detent#1600
+shipped PR #1601, a hotfix whose test encoded a misdiagnosis and fixed
+nothing (see detent#1602). If the evidence and the narrative disagree,
+the evidence wins. An implementer who cannot reproduce the recorded
+sequence in a test must say so on the issue rather than substituting a
+test of the explanation.
