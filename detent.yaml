@@ -26,6 +26,63 @@ tracker:
             - Blocked
         target_state: Todo
         readiness: terminal_or_merged
+# Scheduled admission pass (detent#1535). A read-only agent scores Backlog
+# issues against the "Admission Criteria" section of WORKFLOW.md and PROPOSES
+# the ones worth dispatching. It never changes issue status — a human accepts
+# each proposal, which is what then moves the issue to Todo. Dogfooding this
+# is the point: the standing operator step it removes is the manual "look at
+# everything in Backlog and decide what's legit" sweep.
+#
+# sources.states is Backlog-only on purpose: .github/workflows/issue-intake.yml
+# auto-applies detent:backlog to any issue opened without a detent status
+# label, so this repo has no untracked/unlabeled issues to sweep and does not
+# need sources.untracked (#1553, still queued — that one is for boards like
+# digitaldrywood that carry unlabeled issues).
+backlog_admission:
+    enabled: true
+    # Every 15 minutes (operator decision, 2026-07-30). A once-daily pass was
+    # tried and is wrong for this board: a bug filed at 13:30 would wait until
+    # 06:00 the next weekday, which defeats the point of admission — work
+    # should reach Todo without a human noticing it first.
+    #
+    # The cadence is cheap. Measured over 20 runs: ~25s wall clock and ~36k
+    # tokens per run. At 15m that is ~96 runs/day, ~3.5M tokens/day — about a
+    # quarter of ONE implementation session on this host (max_session_tokens
+    # is 200M). Runs that find no candidates cost less than that average.
+    #
+    # Bounded by max_proposals_per_run/max_open_proposals below, so this
+    # cadence cannot flood the board.
+    schedule: '*/15 * * * *'
+    # Accepting a proposal now performs the admission (detent#1558 -> PR #1560).
+    # auto_admit removes the human accept step entirely for high-confidence
+    # proposals, which is the point of the feature: turn the manual "read
+    # Backlog, decide what is legit, promote it" sweep into something the system
+    # does. Admitted issues move to target_state and become dispatchable
+    # immediately. min_confidence defaults to 0.9; set explicitly so the bar is
+    # visible in config review rather than implied.
+    auto_admit: true
+    # Lowered 0.9 -> 0.85 (2026-07-31). Both sub-0.9 proposals to date (#1527
+    # at 0.86, #1586 at 0.88) were ultimately accepted by the operator by hand,
+    # and zero sub-0.9 proposals have been rejected — the 0.9 bar was calibrated
+    # stricter than the operator's own judgment and produced silent waits.
+    auto_admit_min_confidence: 0.85
+    sources:
+        states:
+            - Backlog
+    target_state: Todo
+    criteria_section: Admission Criteria
+    authors:
+        # Only propose issues filed by known operators, so a drive-by external
+        # issue cannot enter the dispatch queue via admission.
+        allow:
+            - corylanou
+            - loganlanou
+            - michaelhvisser
+            - jarvislanou
+    max_candidates_per_run: 50
+    max_proposals_per_run: 3
+    max_open_proposals: 10
+    proposal_expiry_days: 7
 polling:
     # Label-backed status polling uses REST issue/label endpoints. A 2-min
     # cadence keeps the board responsive while leaving GraphQL budget for
@@ -80,6 +137,24 @@ agent:
     # Kill runaway sessions at 4x the observed median (7.7M tokens); the worst
     # outlier hit 55M while p90 is 23M, so this cap only cuts the pathological
     # tail (doctor runaway_session_tokens finding).
+    # Wall-clock runaway brakes, enabled 2026-07-29. These are the controls
+    # added for detent#1496/#1508 after a single turn ran 8.9h (another 16.5h)
+    # and was stopped only by max_session_tokens. Note that codex.turn_timeout_ms
+    # is NOT a substitute: it bounds the gap between two stream messages, so a
+    # chatty-but-unproductive agent never trips it at any value.
+    #
+    # Sized from this host's own history (1352 recorded sessions, 784 successful
+    # agent attempts): p50 13.5m, p90 45.8m, p99 93.2m, longest success 159.8m.
+    # Only 2 of 784 successes exceeded 120m. A 240m turn cap therefore would
+    # have killed ZERO successful attempts while cutting the 8.9h/16.5h
+    # pathological tail by more than half.
+    #
+    # Every session on this backend is currently a single turn (max_turns=1
+    # across all 1352 rows), so the turn cap is the brake that actually fires.
+    # The session cap sits above it as a backstop that still binds if the
+    # backend ever produces genuinely multi-turn sessions.
+    max_turn_duration_ms: 14400000
+    max_session_duration_ms: 18000000
     max_session_tokens: 200000000
     # Escape hatch for legitimately huge sessions (mega-features at xhigh):
     # label an issue allow-large-session to lift the cap for its sessions.
