@@ -31,3 +31,8 @@ projects:
       workdir: /Users/corylanou/projects/gopherguides/corp
       weight: 1
       priority: 3
+    - id: detent.build
+      workflow: /Users/corylanou/projects/digitaldrywood/detent.build/WORKFLOW.md
+      workdir: /Users/corylanou/projects/digitaldrywood/detent.build
+      weight: 1
+      priority: 3
