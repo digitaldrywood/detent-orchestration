@@ -5,7 +5,16 @@ log_level: debug
 github_token: gh
 port: 4000
 global:
-    max_concurrent_agents: 5
+    # Raised 5 -> 10 (2026-08-08, operator goal: run as many sessions at once as
+    # this host can take). THIS is the fleet hard ceiling on concurrent sessions
+    # across all projects -- it is a separate pool from each project's
+    # agent.max_concurrent_agents and is enforced at dispatch.go:315. Raising a
+    # project's value alone cannot exceed it, which is why both moved together.
+    #
+    # Host headroom at 10 is not a concern: 16 cores / 128 GB, agents measured at
+    # ~71 MB RSS each (~0.7 GB for 10), load ~10 and swap unused at 5 running.
+    # The real budget is the Codex window, not the machine -- see detent.yaml.
+    max_concurrent_agents: 10
     scheduling: strict
     identity:
         name: corys-mac-studio
