@@ -120,7 +120,21 @@ agent:
     # exhaustion are fixed — host TCP/socket churn (sysctl msl=1000 +
     # portrange.first=16384 + #311 process-group reaping) and the 552-pt board
     # poll (#313/#314 gutted it to single-digit points; budget holds at ~5000).
-    max_concurrent_agents: 5
+    # TEMPORARY 2026-08-08: raised 7 -> 9 to HOLD the effective cap at 4 as the
+    # Codex window drains. This is throughput-neutral, not an increase: at 43%
+    # remaining, ceil(9*0.43)=4, the same cap 7 was giving, but 7 sags to 3 once
+    # the window passes 40% while 9 holds 4 down to ~34%. Deliberately not 10,
+    # which would yield 5 at 43% and burn the window faster than the ~3.4%/hr
+    # sustainable rate. REVERT TO 5 with the note below.
+    # TEMPORARY 2026-08-07: raised 5 -> 7 to clear a provider-rate-window wedge.
+    # dispatch_planner.go:653-661 scales THIS value by the Codex window remaining
+    # percent: ceil(5 * 0.48) = 3, and with 3 Detent agents running every queued
+    # issue was skipped as provider_rate_window_backpressure. ceil(7 * 0.48) = 4
+    # reopens one slot. The fleet hard ceiling is unaffected — global.yaml's
+    # global.max_concurrent_agents: 5 is a separate pool enforced at
+    # dispatch.go:315. REVERT TO 5 once the two-stage merge admission fix lands
+    # (see the provider-rate-window issue) or after the window resets.
+    max_concurrent_agents: 9
     # Spend-progress breaker DISABLED 2026-07-12 (0 = off, spend_progress.go
     # gates on limit <= 0): this host runs on a flat Codex subscription, so
     # every USD figure the breaker computes is notional — it was parking
