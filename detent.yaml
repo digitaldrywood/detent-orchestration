@@ -89,7 +89,22 @@ polling:
     # operations that have no REST equivalent.
     interval_ms: 120000
 server:
-    host: 0.0.0.0
+    # Tailnet-only bind (2026-08-08). This repository is public and this
+    # dashboard runs kanban.mode: integration, so it is a control plane that
+    # mutates GitHub on the operator's behalf; 0.0.0.0 published the exact bind
+    # of that control plane and exposed it to the whole LAN.
+    #
+    # Deliberately NOT 127.0.0.1. web/auth.go grants a full StaticCredential to
+    # any API caller when the server address is loopback and api_token is unset,
+    # which is the case here — a loopback bind would turn /api/v1 from
+    # fail-closed (403) into unauthenticated full access for every process on
+    # this host. A tailnet address keeps the API failing closed.
+    #
+    # This is corys-mac-studio's stable Tailscale IPv4. Reach the dashboard at
+    # http://corys-mac-studio.tail60aac7.ts.net:4000 (MagicDNS) from any device
+    # on the tailnet. Note that detent must be started after tailscaled is up,
+    # or the bind fails.
+    host: 100.95.107.50
     port: 4000
     kanban:
         mode: integration
