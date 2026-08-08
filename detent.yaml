@@ -120,21 +120,29 @@ agent:
     # exhaustion are fixed — host TCP/socket churn (sysctl msl=1000 +
     # portrange.first=16384 + #311 process-group reaping) and the 552-pt board
     # poll (#313/#314 gutted it to single-digit points; budget holds at ~5000).
-    # TEMPORARY 2026-08-08: raised 7 -> 9 to HOLD the effective cap at 4 as the
-    # Codex window drains. This is throughput-neutral, not an increase: at 43%
-    # remaining, ceil(9*0.43)=4, the same cap 7 was giving, but 7 sags to 3 once
-    # the window passes 40% while 9 holds 4 down to ~34%. Deliberately not 10,
-    # which would yield 5 at 43% and burn the window faster than the ~3.4%/hr
-    # sustainable rate. REVERT TO 5 with the note below.
-    # TEMPORARY 2026-08-07: raised 5 -> 7 to clear a provider-rate-window wedge.
+    # Raised to 10 (2026-08-08, operator goal: run as many sessions at once as
+    # this host can take). Supersedes the temporary 5->7->9 props used on
+    # 2026-08-07/08 to clear a provider-rate-window wedge; those are resolved —
+    # the wedge cause was fixed by the two-stage merge admission change (#1659)
+    # and the Codex window has since reset.
+    #
     # dispatch_planner.go:653-661 scales THIS value by the Codex window remaining
-    # percent: ceil(5 * 0.48) = 3, and with 3 Detent agents running every queued
-    # issue was skipped as provider_rate_window_backpressure. ceil(7 * 0.48) = 4
-    # reopens one slot. The fleet hard ceiling is unaffected — global.yaml's
-    # global.max_concurrent_agents: 5 is a separate pool enforced at
-    # dispatch.go:315. REVERT TO 5 once the two-stage merge admission fix lands
-    # (see the provider-rate-window issue) or after the window resets.
-    max_concurrent_agents: 9
+    # percent: ceil(10 * remaining/100), floored at 1. At the current 92% that is
+    # a scaled cap of 10, so the scaling is not currently the binding constraint.
+    # It bites as the window drains: 10 gives 9 at 85%, 5 at 45%, 2 at 15%.
+    #
+    # Raising this alone would NOT have produced 10 sessions — global.yaml's
+    # global.max_concurrent_agents is the fleet hard ceiling (a separate pool,
+    # enforced at dispatch.go:315) and was raised 5 -> 10 alongside this.
+    #
+    # TRADEOFF, accepted deliberately: the Codex window is now WEEKLY (reset
+    # 2026-08-15T14:34:48Z, ~168h out) at 92%. Sustainable burn to last the week
+    # is ~0.55%/hr; measured burn was ~3.3%/hr at 4 agents, so ~0.8%/hr per
+    # agent. Ten agents running flat out is ~8%/hr, which spends the weekly
+    # window in roughly half a day and then self-throttles toward a cap of 1.
+    # That is the accepted cost of maximum concurrency; drop this value if the
+    # week's budget matters more than today's throughput.
+    max_concurrent_agents: 10
     # Spend-progress breaker DISABLED 2026-07-12 (0 = off, spend_progress.go
     # gates on limit <= 0): this host runs on a flat Codex subscription, so
     # every USD figure the breaker computes is notional — it was parking
