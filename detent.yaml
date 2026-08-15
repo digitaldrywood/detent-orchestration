@@ -335,3 +335,9 @@ hooks:
         # The Go workspace backend creates the worktree natively (git worktree add)
         # from workspace.source_root before this hook runs, so we no longer add it
         # here. This hook now only keeps origin/main fresh and prunes stale state.
+
+worker:
+  # Ambient gh worker auth (v0.66.0, detent#1798): workers resolve gh auth token
+  # into their isolated environment. Shared-budget mode by design -- the
+  # reserved-headroom brake throttles workers before the orchestrator starves.
+  github_token: gh
