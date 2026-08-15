@@ -135,13 +135,20 @@ agent:
     # global.max_concurrent_agents is the fleet hard ceiling (a separate pool,
     # enforced at dispatch.go:315) and was raised 5 -> 10 alongside this.
     #
-    # TRADEOFF, accepted deliberately: the Codex window is now WEEKLY (reset
-    # 2026-08-15T14:34:48Z, ~168h out) at 92%. Sustainable burn to last the week
-    # is ~0.55%/hr; measured burn was ~3.3%/hr at 4 agents, so ~0.8%/hr per
-    # agent. Ten agents running flat out is ~8%/hr, which spends the weekly
-    # window in roughly half a day and then self-throttles toward a cap of 1.
-    # That is the accepted cost of maximum concurrency; drop this value if the
-    # week's budget matters more than today's throughput.
+    # Codex window is WEEKLY (reset 2026-08-15T14:34:48Z). Burn is ~0.8%/hr per
+    # agent (measured ~3.3%/hr at 4 agents), so 10 agents flat out is ~8%/hr.
+    #
+    # That is NOT a problem for this host's actual usage, which is spiky rather
+    # than sustained: bursts to catch up, long stretches near idle. The window
+    # read 92% after a full week away, which is the pattern in one number. A
+    # 4h catch-up burst at 10 agents costs ~32% and still leaves ~56% for the
+    # rest of the week; even 8h flat out leaves ~24%.
+    #
+    # Sizing this for the average would waste the burst capacity that is the
+    # whole point. The throttle is also self-correcting, not a cliff: as the
+    # window drains, dispatch_planner.go scales the cap down gradually and
+    # surfaces provider_rate_window_backpressure. Only revisit this value if
+    # sustained (not spiky) churn becomes the norm.
     max_concurrent_agents: 10
     # Spend-progress breaker DISABLED 2026-07-12 (0 = off, spend_progress.go
     # gates on limit <= 0): this host runs on a flat Codex subscription, so
@@ -209,6 +216,29 @@ agent:
         optout_label: requires-human-review
         allowed_issue_labels: []
 codex:
+    # Allowlist added 2026-08-14: detent#1787 ships elicitation approval
+    # DEFAULT EMPTY, so without this block every github connector mutation
+    # an agent attempts is declined as "user rejected MCP tool call" and the
+    # PR deliverable fails (the Aug 12-14 stranded-branch incidents). Scope is
+    # deliberately the workflow's own deliverable on this repo only.
+    deliverable_elicitation_allowlist:
+      - server: codex_apps
+        tool: github.create_pull_request
+        repository: digitaldrywood/detent
+      - server: codex_apps
+        tool: github.update_pull_request
+        repository: digitaldrywood/detent
+      # Workpad comments and lane-label transitions are ALSO deliverable
+      # mutations: the Detent protocol requires them before implementation.
+      # Verified 2026-08-14 on gopherguides/corp: every implement session died
+      # at workpad creation with "user rejected MCP tool call" on these two
+      # tools (40 clean-diff no_progress attempts across corp#343/#473).
+      - server: codex_apps
+        tool: github.add_comment_to_issue
+        repository: digitaldrywood/detent
+      - server: codex_apps
+        tool: github.update_issue
+        repository: digitaldrywood/detent
     # Deliberately unpinned: the Codex CLI default manages the model, so this
     # survives provider model retirements and picks up generation upgrades
     # automatically. Telemetry resolves the effective model from the session
