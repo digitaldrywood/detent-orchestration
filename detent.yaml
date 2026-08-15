@@ -236,6 +236,12 @@ codex:
       - server: codex_apps
         tool: github.add_comment_to_issue
         repository: digitaldrywood/detent
+      # update_issue_comment was MISSING here until 2026-08-15 while the
+      # comment above claimed updates were covered -- corp#343's workpad
+      # update was rejected under v0.66.0 because of exactly this gap.
+      - server: codex_apps
+        tool: github.update_issue_comment
+        repository: digitaldrywood/detent
       - server: codex_apps
         tool: github.update_issue
         repository: digitaldrywood/detent
