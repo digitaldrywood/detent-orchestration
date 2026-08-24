@@ -24,6 +24,14 @@ global:
     startup:
         jitter_seconds: 0
         max_spawn_per_second: 2
+    rate_window_pacing:
+        mode: proportional
+        floor_percent: 20
+        stale_after_seconds: 900
+    memory:
+        max_agent_rss_bytes: 8589934592
+        pressure_some_avg60_threshold: 10
+        poll_interval_ms: 1000
 projects:
     - id: detent
       workflow: ~/projects/digitaldrywood/detent-orchestration/WORKFLOW.md
@@ -43,5 +51,10 @@ projects:
     - id: detent.build
       workflow: /Users/corylanou/projects/digitaldrywood/detent.build/WORKFLOW.md
       workdir: /Users/corylanou/projects/digitaldrywood/detent.build
+      weight: 1
+      priority: 3
+    - id: parable
+      workflow: /Users/corylanou/projects/getparable/parable/WORKFLOW.md
+      workdir: /Users/corylanou/projects/getparable/parable
       weight: 1
       priority: 3

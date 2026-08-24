@@ -199,7 +199,19 @@ agent:
     # backend ever produces genuinely multi-turn sessions.
     max_turn_duration_ms: 14400000
     max_session_duration_ms: 18000000
-    max_session_tokens: 200000000
+    # Lowered 200M -> 50M (2026-08-19, operator, Aug 14-19 dispatch-loop
+    # incident): 200M is no ceiling at all. 50M clears every legitimate session
+    # class observed fleet-wide and still kills true runaways.
+    # Lifetime caps HIGH (2026-08-24, operator): the shipped defaults (15
+    # sessions / 40M tokens) parked detent#1960 -- the faults-only banner work --
+    # at 64.9M in only TWO sessions. That is normal for an xhigh issue here and
+    # is a textbook false positive under the operator's brake doctrine: catch
+    # true runaways (the 81-dispatch class), never a legitimate long grind.
+    # Matches the 60/500M set fleet-wide on 2026-08-22. Per-issue escape is the
+    # allow-lifetime-limit label.
+    lifetime_session_limit: 60
+    lifetime_token_limit: 500000000
+    max_session_tokens: 50000000
     # Escape hatch for legitimately huge sessions (mega-features at xhigh):
     # label an issue allow-large-session to lift the cap for its sessions.
     max_session_token_override_label: allow-large-session

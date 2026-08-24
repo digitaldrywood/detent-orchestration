@@ -108,21 +108,48 @@ current-head CI, retrigger pushes — belongs in `Rework`.
 
 ## REST Budget Discipline
 
-GraphQL and REST have separate ~5,000/hr budgets, and the orchestrator's own
-polling needs the GraphQL headroom. Keep routine agent work on REST:
+GraphQL and REST have separate ~5,000/hr budgets, and **REST is the scarce one**.
+Agents share the orchestrator's credential, so agent polling and orchestrator
+dispatch draw down the same REST bucket. On 2026-08-08 REST hit 0/5000 twice and
+suppressed dispatch (`skip_reason: github_rest_capacity_paused`) while GraphQL
+sat at ~4,700/5,000 — about 6% used. Treat REST as the budget to protect.
 
-- Watch CI via `gh api repos/<o>/<r>/commits/<sha>/check-runs` or
-  `gh run watch <run-id> --exit-status`; never loop `gh pr checks --watch` or
+CI watching is where the budget goes. Poll as little as possible:
+
+- Watch CI with a single blocking `gh run watch <run-id> --exit-status`.
+  Prefer this over any polling loop — it is one call, not one per interval.
+- If you must poll `gh api repos/<o>/<r>/commits/<sha>/check-runs`, use an
+  interval of **60s or more** and cap the total iterations. Never poll faster
+  than 60s, never loop unbounded, and never loop `gh pr checks --watch` or
   `gh pr view`.
+- Never poll `api.github.com` with bare `curl`. Unauthenticated requests get the
+  60/hr anonymous IP limit and are invisible to budget accounting.
 - Merge via `gh api --method PUT repos/<o>/<r>/pulls/<N>/merge
   -f merge_method=squash -f sha=<sha>`; never `gh pr merge`.
-- Prefer `gh api repos/...` REST reads over `gh pr view --json` /
-  `gh issue view --json`; status changes are label updates over REST.
-- On a GraphQL rate-limit error, switch the operation to REST instead of
-  waiting for the hourly reset.
+- Status changes are label updates over REST.
+- When REST is the constrained budget and the same read is available on GraphQL,
+  use GraphQL — it has idle headroom. On a GraphQL rate-limit error, fall back to
+  REST rather than waiting for the hourly reset.
 
 Do not use GitHub Actions as an edit loop: batch local fixes, run focused
 tests then the full gate locally, and push once per validated batch.
+
+## Browser Verification In Workers
+
+When a UI-visible change requires browser verification, use the browser tooling
+this worker actually has:
+
+- Use the **`chrome-devtools` MCP server** (`mcp__chrome-devtools__*`). It is
+  configured for Codex workers and is worktree-aware, so each worktree gets an
+  isolated Chrome profile.
+- Do **not** route through the `claude-in-chrome` skill or
+  `mcp__claude-in-chrome__*` tools. Those need the Claude Chrome extension,
+  which no Detent worker has, and that skill forbids substituting
+  chrome-devtools — so choosing it parks the issue in `Blocked` while working
+  browser tooling sits unused.
+- Treat browser tooling as missing only if
+  `mcp__chrome-devtools__navigate_page` is genuinely absent from the tool list.
+  Verify before declaring the gate unsatisfiable.
 
 ## State Flow
 
