@@ -359,3 +359,16 @@ worker:
   # into their isolated environment. Shared-budget mode by design -- the
   # reserved-headroom brake throttles workers before the orchestrator starves.
   github_token: gh
+
+agents:
+    model_selection:
+        preset: sol_first
+        normal_model: gpt-6-astra
+        complex_model: gpt-6-astra
+        levels:
+            normal:
+                effort: low
+            complex:
+                effort: medium
+            very_complex:
+                effort: high

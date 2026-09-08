@@ -284,3 +284,15 @@ nothing (see detent#1602). If the evidence and the narrative disagree,
 the evidence wins. An implementer who cannot reproduce the recorded
 sequence in a test must say so on the issue rather than substituting a
 test of the explanation.
+
+## Issue effort selection
+
+Use Codex Astra (`gpt-6-astra`) at low effort by default, medium for
+moderately difficult work, and high for the hardest work.
+
+- `low` — small, mechanical work with complete acceptance criteria.
+- `medium` — a standard feature or fix with ambiguity or several affected components.
+- `high` — subsystem, concurrency, multi-host state, restart, or recovery work.
+
+Never recommend max automatically. Preserve explicit operator overrides and
+leave model unset so the issue inherits the fleet-standard model.
