@@ -5,6 +5,18 @@ log_level: debug
 github_token: gh
 port: 4000
 global:
+    agents:
+        model_selection:
+            preset: sol_first
+            normal_model: gpt-6-astra
+            complex_model: gpt-6-astra
+            levels:
+                normal:
+                    effort: low
+                complex:
+                    effort: medium
+                very_complex:
+                    effort: high
     # Raised 5 -> 10 (2026-08-08, operator goal: run as many sessions at once as
     # this host can take). THIS is the fleet hard ceiling on concurrent sessions
     # across all projects -- it is a separate pool from each project's
