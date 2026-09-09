@@ -14,9 +14,9 @@ global:
                 normal:
                     effort: low
                 complex:
-                    effort: medium
+                    effort: low
                 very_complex:
-                    effort: high
+                    effort: low
     # Raised 5 -> 10 (2026-08-08, operator goal: run as many sessions at once as
     # this host can take). THIS is the fleet hard ceiling on concurrent sessions
     # across all projects -- it is a separate pool from each project's
