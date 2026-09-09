@@ -287,12 +287,22 @@ test of the explanation.
 
 ## Issue effort selection
 
-Use Codex Astra (`gpt-6-astra`) at low effort by default, medium for
-moderately difficult work, and high for the hardest work.
+Use Codex Astra (`gpt-6-astra`) at low effort by default for features, fixes,
+tests, reviews, and routine implementation, including cross-component work.
 
-- `low` — small, mechanical work with complete acceptance criteria.
-- `medium` — a standard feature or fix with ambiguity or several affected components.
-- `high` — subsystem, concurrency, multi-host state, restart, or recovery work.
+Every issue must include an explicit override, with model unset:
 
-Never recommend max automatically. Preserve explicit operator overrides and
-leave model unset so the issue inherits the fleet-standard model.
+```detent-agent
+schema: 1
+effort: low
+```
+
+- `low` — the default for all work without a specific documented reason to escalate.
+- `medium` — an exception for a concrete reasoning difficulty or evidence that low was insufficient; explain the reason in the issue.
+- `high` — rare, significant research or architecture work with a written justification.
+- `xhigh` and `max` — operator-designated only; never assign automatically.
+
+Concurrency, recovery, routing, multiple files, or a new endpoint alone do not
+justify higher effort. Preserve intentional operator exceptions. Configured
+complexity levels default to low; verify any approved exception against the
+runtime effort ceiling rather than raising broad defaults.
