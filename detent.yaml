@@ -1,5 +1,10 @@
 schema: 1
 tracker:
+    # 2026-09-13: default fanout cap (80) starved PR hydration on a 140-candidate board
+    # (pull_request_hydration_unavailable / start_state_transition_failed).
+    github_rest_fanout_max_requests: 300
+    # 2026-09-13: the reserve gate reads mixed rate-limit windows for one credential (false 'reserve floor held' while core had 4.6K left); lowered until the accounting fix ships.
+    github_rest_min_remaining_reserve: 300
     kind: github
     endpoint: https://api.github.com/graphql
     api_key: $GITHUB_TOKEN
@@ -71,6 +76,9 @@ backlog_admission:
             - Backlog
     target_state: Todo
     criteria_section: Admission Criteria
+    require_effort: true
+    effort_file: WORKFLOW.md
+    effort_section: Issue effort selection
     authors:
         # Only propose issues filed by known operators, so a drive-by external
         # issue cannot enter the dispatch queue via admission.
@@ -111,7 +119,10 @@ server:
 workspace:
     root: ~/code/detent-workspaces
     source_root: ~/projects/digitaldrywood/detent
+    cache_strategy: shared
 agent:
+    # 2026-09-13: disabled pending detent#2538 (brake counts cached prompt tokens and infra-failed attempts; false parks on subscription).
+    no_progress_token_limit: 0
     # Merge train: keep global throughput at 5, but serialize the final
     # rebase/push/merge so concurrent merge candidates do not invalidate
     # each other's CI. States omitted from max_concurrent_agents_by_state
@@ -273,7 +284,10 @@ codex:
         type: dangerFullAccess
 gate:
     kind: command
-    run: make check
+    validator:
+        enabled: true
+        block_on: [p1]
+    run: make check-fast
     require_automated_review: false
 budget:
     # Enabled 2026-07-11 as an independent circuit breaker against runaway
@@ -355,20 +369,26 @@ hooks:
         # here. This hook now only keeps origin/main fresh and prunes stale state.
 
 worker:
+  # 2026-09-13: worker headroom brake reads the same conflated REST window as the tracker reserve (detent#2547); keep > tracker reserve (300).
+  github_rest_min_remaining_reserve: 500
   # Ambient gh worker auth (v0.66.0, detent#1798): workers resolve gh auth token
   # into their isolated environment. Shared-budget mode by design -- the
   # reserved-headroom brake throttles workers before the orchestrator starves.
   github_token: gh
+schedule_ownership:
+    # Added 2026-08-28 (operator). v0.85.0 (#1972) made scheduled work --
+    # backlog admission, routines, scheduled intake -- require a shared
+    # ownership lease. Projects without this block silently stopped ALL
+    # scheduled work on upgrade: no runs, no logs beyond one startup ERROR,
+    # and restarts reproduced it. Backlog stopped draining to Todo for 4 days.
+    # Cross-host lease so exactly one Detent instance runs these schedules.
+    enabled: true
+    key: detent
+    repository: digitaldrywood/detent
 
 agents:
-    model_selection:
-        preset: sol_first
-        normal_model: gpt-6-astra
-        complex_model: gpt-6-astra
-        levels:
-            normal:
-                effort: low
-            complex:
-                effort: medium
-            very_complex:
-                effort: high
+    # Model and reasoning effort are deliberately NOT set here. The fleet
+    # default lives once in the instance config (~/.detent/global.yaml).
+    # A project block would override the instance layer, which is how six
+    # copies of this setting drifted apart. Omission inherits.
+    model_selection: {}
