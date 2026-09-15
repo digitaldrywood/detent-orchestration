@@ -164,7 +164,7 @@ Use the current Detent state as the source of truth for which section applies.
 4. Reproduce a reported behavior before changing code; implement the smallest complete change.
 5. Run focused tests, then the full validation gate.
 6. Commit, push, and open or update a PR filling the template (`Summary`, `Fixes #N`, `Test Plan`). If the PR is a draft, mark it ready yourself (`gh pr ready`, idempotent) — humans never mark Detent PRs ready.
-7. Re-check PR comments, reviews, and CI on the latest head; address actionable feedback.
+7. Do not spawn sub-agents for review; the GitHub review bot reviews the PR. Address its findings when they arrive. Re-check PR comments, reviews, and CI on the latest head; address actionable feedback.
 8. Leave the issue in `In Progress`. Set Workpad `status: complete` with no blockers or human action only when the PR is non-draft, references the issue, and the gate and current-head CI are green with no actionable review remaining. Detent auto-promotes directly to `Merging`; never use `Human Review`.
 
 If a required gate cannot run because of missing tools, auth, secrets, or
