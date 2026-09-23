@@ -36,6 +36,8 @@ global:
                     effort: low
                 very_complex:
                     effort: medium
+        backends: []
+        routes: []
     # Raised 5 -> 10 (2026-08-08, operator goal: run as many sessions at once as
     # this host can take). THIS is the fleet hard ceiling on concurrent sessions
     # across all projects -- it is a separate pool from each project's
@@ -45,8 +47,26 @@ global:
     # Host headroom at 10 is not a concern: 16 cores / 128 GB, agents measured at
     # ~71 MB RSS each (~0.7 GB for 10), load ~10 and swap unused at 5 running.
     # The real budget is the Codex window, not the machine -- see detent.yaml.
+    # 2026-09-14 operator: concurrency is not a burn control; "I want it to crank". Waste is fixed by
+    # the loop breaker (#2595) and one reviewer per project, never by fewer slots.
     max_concurrent_agents: 10
-    scheduling: strict
+    # 2026-09-21 operator: the 20 GiB default from detent#2734 sits below this
+    # fleet's real Go build-cache working set (~20-23 GiB), so every 10-minute
+    # sweep evicted entries that running builds still needed and produced
+    # spurious compile/vet failures (detent#2853). 50 GiB leaves headroom so
+    # eviction is rare instead of continuous. Age expiry is unchanged at 48h.
+    cache:
+        max_age: 48h0m0s
+        max_bytes: 53687091200 # 50 GiB
+    # Restored to strict 2026-09-04 after detent#2170 (v0.104.0) removed priority
+    # slot reservation. Priority now orders contention only and never holds idle
+    # capacity, so a priority-0 project whose candidates are all declined by its
+    # own authorization selector can no longer starve the fleet.
+    # 2026-09-13: strict mode preempted (cancelled) running lower-priority sessions whenever a
+    # higher-priority project wanted a slot (scheduler.global_dispatch_preemption on video-studio,
+    # five cancellations in 90 min, every one re-run from scratch). Weighted keeps priority as
+    # ordering for new dispatch without killing paid work.
+    scheduling: weighted
     identity:
         name: corys-mac-studio
         ownership_mode: assignee
@@ -56,19 +76,25 @@ global:
         jitter_seconds: 0
         max_spawn_per_second: 2
     rate_window_pacing:
-        mode: proportional
+        mode: "off"
         floor_percent: 20
         stale_after_seconds: 900
     memory:
         max_agent_rss_bytes: 8589934592
         pressure_some_avg60_threshold: 10
         poll_interval_ms: 1000
+    io:
+        pressure_full_avg10_threshold: 5
+        poll_interval_ms: 1000
+    cpu:
+        pressure_some_avg10_threshold: 80
+        poll_interval_ms: 1000
 projects:
     - id: detent
       workflow: ~/projects/digitaldrywood/detent-orchestration/WORKFLOW.md
       workdir: ~/code/detent-workspaces
       weight: 1
-      priority: 0
+      priority: 1
     - id: gopher-ai
       workflow: /Users/corylanou/projects/gopherguides/gopher-ai/WORKFLOW.md
       workdir: /Users/corylanou/projects/gopherguides/gopher-ai
@@ -87,5 +113,21 @@ projects:
     - id: parable
       workflow: /Users/corylanou/projects/getparable/parable/WORKFLOW.md
       workdir: /Users/corylanou/projects/getparable/parable
+      weight: 1
+      priority: 0
+    # Moved off prometheus 2026-09-13. workflow points at the BUILT artifact in
+    # video-studio/bin, not the tracked source: make build renders this machine's
+    # paths into it. workdir is the Dropbox video workspace.
+    - id: digitaldrywood-video
+      workflow: /Users/corylanou/projects/digitaldrywood/video-studio/bin/detent-video-current/video-production.WORKFLOW.md
+      workdir: "/Users/corylanou/Dropbox/Digital Drywood/Video Production"
+      weight: 2
+      priority: 2
+    # Moved off prometheus 2026-09-13 (paused there first, so ownership never
+    # overlapped). Code repo and its bug-fix workers; tracker is github, so the
+    # only host state is the checkout itself.
+    - id: video-studio
+      workflow: /Users/corylanou/projects/digitaldrywood/video-studio/WORKFLOW.md
+      workdir: /Users/corylanou/projects/digitaldrywood/video-studio
       weight: 1
       priority: 3
