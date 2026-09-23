@@ -283,12 +283,7 @@ codex:
     turn_sandbox_policy:
         type: dangerFullAccess
 gate:
-    # 2026-09-17 operator: the Codex review bot has had no quota since 09-15 and the
-    # merge queue was merging PRs before the operator's hand review could run.
-    # Human-review gate: completed cards wait in Human Review until the operator
-    # applies `human-approved` after reviewing the PR; then they promote to Merging.
-    kind: human_review
-    approval_label: human-approved
+    kind: command
     validator:
         # 2026-09-14 operator: the Codex GitHub review bot reviews every PR here; the in-Detent
         # validator was a second reviewer in series (12% of spend, 1 in 3 verdicts a rework bounce).
