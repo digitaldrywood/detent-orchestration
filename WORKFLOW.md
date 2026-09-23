@@ -36,27 +36,13 @@ Reference projects:
 
 ## Detent Protocol
 
-Keep one persistent `## Codex Workpad` issue comment updated with the plan, validation
-evidence, blockers, and final handoff. Every update must contain one `detent-status`
-fenced block; Detent reads blockers and human actions only there, never from prose.
-`status` must be one of `in_progress`, `blocked`, or `complete`.
+The assigned issue authorizes implementation and validation without confirmation.
+Follow the Detent-appended Blocked handoff section for the canonical Workpad,
+dependency, human-question, completion, and tracker ownership contract. Do not
+copy that contract here; see Detent's docs/templates/blocked-handoff.md.
 
-```detent-status
-schema: 1
-status: in_progress
-blockers: []
-human_action: null
-```
-
-Before coding, resolve every native dependency, Workpad blocker, and issue-body
-`Depends on:` reference. For a dependency blocker, create GitHub's native
-`blocked_by` relation first, then set Workpad `status: blocked` and list its
-`ref` and `reason`, and keep a parseable `Depends on: #N` or
-`Blocked by: owner/repo#N` line in the issue body so Detent can auto-unblock.
-Never reimplement a dependency.
-
-The validation gate is `make check` (the configured `gate.run`; this file must
-state it because the orchestrator config is outside your worktree). Run
+The validation gate is `make check-fast` (the configured `gate.run`; this file must
+state it because the orchestrator config is outside your worktree). Race tests, coverage, and nilaway run once in the merge queue, not in your session; do not run `make check` unless a change touches the safety-critical orchestrator files listed in CLAUDE.md. Run
 `make generate` before committing if you touched templates, queries, or CSS,
 and commit the generated output. New or changed observable behavior requires
 stdlib table-driven tests (no testify); the coverage gate is 70%, with
@@ -83,28 +69,11 @@ Never bind to port 4000, and never stop, restart, signal, kill, or replace the
 live Detent process on `127.0.0.1:4000` unless the human explicitly authorizes
 that exact action in the current conversation. Tests or experiments that need
 a server use port 0 or an isolated instance with its own config, workspace
-root, and database. If an isolation prerequisite is missing, move the issue to
-`Blocked` with the exact blocker; do not compensate by sharing state.
+root, and database. If isolation is missing, report the exact failure; do not share state.
 
 After a merge or abandonment: drop any stash entries you created, then
 `git -C $HOME/projects/digitaldrywood/detent worktree remove <workspace>` when
 no process is using it, and `worktree prune`. Leave other worktrees alone.
-
-## Tracker Interaction
-
-Detent polls status labels; you own the Workpad and only these label
-transitions (keep exactly one `detent:*` status label on the issue):
-`Todo -> In Progress`, `Rework -> In Progress`, any state -> `Blocked`, and
-`Merging -> Done` after a merge. State names map through `state_map` (identity
-plus `Cancelled -> Done`), so `In Progress` is `detent:in-progress`.
-
-Never apply `detent:human-review`. Completion is signaled by
-`status: complete` in the Workpad while the issue stays in `In Progress`;
-Detent watches the PR gate and promotes to `Merging` itself. A stuck agent
-belongs in `Blocked`, never `Human Review`. Reserve `Blocked` for true
-human-only blockers (missing credentials, tools, external services, ambiguous
-direction); agent-recoverable PR maintenance — conflicts, stale or missing
-current-head CI, retrigger pushes — belongs in `Rework`.
 
 ## REST Budget Discipline
 
@@ -132,7 +101,7 @@ CI watching is where the budget goes. Poll as little as possible:
   REST rather than waiting for the hourly reset.
 
 Do not use GitHub Actions as an edit loop: batch local fixes, run focused
-tests then the full gate locally, and push once per validated batch.
+tests then validate locally as specified in Detent Protocol, and push once per validated batch.
 
 ## Browser Verification In Workers
 
@@ -158,39 +127,37 @@ Use the current Detent state as the source of truth for which section applies.
 
 ### For Todo
 
-1. Move the issue to `In Progress`.
-2. Initialize the Workpad with the plan, acceptance criteria, validation plan, and `in_progress` status.
+1. Re-read the issue and current Workpad.
+2. Initialize the Workpad using the appended handoff contract.
 3. Fetch `origin/main`, confirm the worktree branch is based on it, and resolve dependencies.
 4. Reproduce a reported behavior before changing code; implement the smallest complete change.
-5. Run focused tests, then the full validation gate.
-6. Commit, push, and open or update a PR filling the template (`Summary`, `Fixes #N`, `Test Plan`). If the PR is a draft, mark it ready yourself (`gh pr ready`, idempotent) — humans never mark Detent PRs ready.
-7. Do not spawn sub-agents for review; the GitHub review bot reviews the PR. Address its findings when they arrive. Re-check PR comments, reviews, and CI on the latest head; address actionable feedback.
-8. Leave the issue in `In Progress`. Set Workpad `status: complete` with no blockers or human action only when the PR is non-draft, references the issue, and the gate and current-head CI are green with no actionable review remaining. Detent auto-promotes directly to `Merging`; never use `Human Review`.
-
-If a required gate cannot run because of missing tools, auth, secrets, or
-external access, move the issue to `Blocked` with the exact failed command and
-the human action needed — never declare `complete`.
+5. Run focused tests, then follow the validation rule in Detent Protocol.
+6. Commit, push, and open the PR as a **draft** (`gh pr create --draft`) filling the template (`Summary`, `Fixes #N`, `Test Plan`). CI does not run on drafts; keep pushing to the draft while you iterate.
+7. Do not spawn sub-agents for review; the GitHub review bot reviews the PR. Address its findings when they arrive. Then mark the PR ready yourself (`gh pr ready`, idempotent) — humans never mark Detent PRs ready. Marking ready is the one CI run for this PR; do not push to a ready PR unless Detent routes the issue to `Rework`.
+8. Re-check PR comments, reviews, and CI on the latest head; address actionable feedback. Review-bot threads never gate the merge on their own; fix what is actionable, resolve the thread, and move on.
+9. Report completion through the appended handoff contract only when the PR is
+   non-draft, references the issue, and local validation and current-head CI are
+   green with no actionable review remaining. Report exact validation failures.
 
 ### For In Progress
 
 Re-read the issue, PR, comments, and Workpad, then continue from the current state.
-When implementation is complete, run the full gate and apply Todo's completion rule.
+When implementation is complete, follow the validation rule in Detent Protocol and apply Todo's completion rule.
 
 ### For Rework
 
-Re-read all human, CI, and bot feedback, move the issue to `In Progress`, fix,
-push, rerun the full gate, and apply Todo's completion rule.
+Re-read all human, CI, and bot feedback, fix,
+validate and push as specified in Detent Protocol, and apply Todo's completion rule.
 
 ### For Merging
 
-1. Rebase the PR branch onto current `origin/main`, run the validation gate on
-   the rebased branch as a fast pre-push guard, and push.
+1. Rebase the PR branch onto current `origin/main`, validate the
+   rebased branch as specified in Detent Protocol, and push.
 2. Watch CI on the pushed head via REST; wait for every check to pass and
    every automated review to be addressed (no `CHANGES_REQUESTED`, no pending
    bot review).
-3. Merge via the REST merge endpoint with the exact head sha, then move the
-   issue to `Done`.
-4. End with exactly one terminal outcome:
+3. Merge via the REST merge endpoint with the exact head sha, then report the merge in the Workpad.
+4. Report exactly one terminal outcome through the Workpad:
    - PR merged and issue moved to `Done`;
    - issue moved to `Rework` with an actionable defect;
    - issue remains in `Merging` with the external blocker recorded in the
@@ -200,7 +167,8 @@ push, rerun the full gate, and apply Todo's completion rule.
 ## Admission Criteria
 
 Used by the scheduled admission pass to decide which `Backlog` issues to
-propose for `Todo`. Detent proposes; a human accepts. Each subsection
+propose for `Todo`. Configured high-confidence proposals are automatically
+admitted; lower-confidence proposals require operator acceptance. Each subsection
 below is a scoring dimension. A proposal must quote the rule it relied
 on, verbatim, and an issue that satisfies no dimension is not proposed.
 
@@ -236,6 +204,14 @@ Do not admit, regardless of how well argued:
    Polish is not a priority on its own.
 8. **Umbrella and epic issues.** Flat issues with `Depends on:` lines
    only. Decompose before admitting anything inside.
+9. **Features and new or expanded mechanisms without a human's scope
+   approval.** Any issue that adds capability, surface, configuration,
+   a brake, breaker, lease, park, recovery path, reservation, or reason
+   code stays in `Backlog` until a human moves it, regardless of who
+   filed it or how the title is typed. Only a fix with recorded runtime
+   evidence (log lines, database rows, attempt ids, a reproducible
+   failure) whose remedy removes or consolidates may be admitted without
+   a human. Operator decision 2026-09-14.
 
 ### Readiness
 
@@ -249,14 +225,10 @@ ready. What fails this dimension is a wish with no checkable end state.
 An issue whose `Depends on:` reference is not merged into `origin/main`
 is not ready; leave it in `Backlog`.
 
-An issue with no `detent-agent` effort block is not ready. Effort is a
-deliberate operator choice, and an issue admitted without one dispatches
-on the fleet default — which silently under-resources exactly the
-subsystem, concurrency, and recovery work that most needs `xhigh`. Leave
-it in `Backlog` and say the block is missing. This gate is unnecessary
-once admission itself recommends an effort and writes it on admit
-(detent#1571); until then it is the only thing preventing an
-effort-less dispatch.
+A missing `detent-agent` effort block alone does not make an issue unready.
+Admission recommends an effort using the Issue effort selection section and
+writes it before moving the issue to Todo. Existing effort overrides remain
+authoritative. Require a valid recommendation before admitting an issue.
 
 When an issue fails only on readiness, say what is missing rather than
 admitting it.
@@ -307,3 +279,22 @@ Concurrency, recovery, routing, multiple files, or a new endpoint alone never
 justify changing the effort. Preserve intentional operator exceptions and leave
 `model` unset so the issue inherits the fleet-standard model.
 
+## Mechanism moratorium
+
+Effective 2026-09-10 until the operator lifts it. Detent has grown a large set
+of interacting self-protection mechanisms (brakes, breakers, leases, parks,
+recovery sweeps, revocations, reconcilers). Their interactions are now the main
+source of incidents.
+
+- Do not add a new brake, breaker, lease, park, recovery path, revocation,
+  reason code, or reconciliation loop.
+- A fix for a misbehaving mechanism must remove or consolidate a mechanism, or
+  state in the PR why it cannot. "Add a guard for the new case" is not a fix.
+- Infrastructure failures (backend startup, protocol errors, workspace hooks)
+  are attributed to the instance, never to the issue.
+- The orchestrator is the only writer of tracker lane state; workers report
+  outcomes and never write lane labels.
+- Do not add configuration keys, CLI subcommands, or dashboard surfaces to work
+  around a mechanism. Fix the mechanism.
+- Machine-filed issues carry an origin stamp and a fingerprint; never file a
+  duplicate of an open issue, comment on it instead.
