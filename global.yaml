@@ -6,36 +6,72 @@ github_token: gh
 port: 4000
 global:
     agents:
-        # 2026-09-13: fleet default is Codex Astra at low effort -- equivalent in
-        # capability to Sol at high, at lower cost. This is the ONLY place the
-        # fleet model/effort is set; project detent.yaml files intentionally
-        # carry no model_selection block so they inherit this (project layer
-        # overrides instance layer, so a project pin silently wins).
+        # 2026-09-23 (operator): Astra plans and validates, Sol builds. A blind
+        # replay of 18 merged issues (72 runs) had GPT-6 Sol at high effort
+        # merge-ready on 18 of 24 runs against Astra low's 16 of 24, at 40% of
+        # the credits; Sol at xhigh cost more with no quality gain.
         #
-        # 2026-09-21 (operator): medium is the absolute automatic ceiling. The
-        # effort clamp (detent#2673) caps an issue at its level's effort, and
-        # the highest configured level is now medium, so nothing dispatched by
-        # policy or requested by an issue can reach high, xhigh, or max --
-        # including a `detent-agent` block written by an agent. Going above
-        # medium requires a human editing this file. Before this change,
-        # very_complex sat at high and 176 Astra sessions ran at high effort
-        # (74 at xhigh before 2026-09-08); the clamp stopped the leak, this
-        # lowers the ceiling that remained.
+        # Every field is explicit so nothing falls through to the built-in
+        # sol_first preset (which still names gpt-5.6-sol). Projects inherit
+        # this block; a project pins its own only where it differs, and a
+        # project pin wins over this layer.
         #
-        # very_complex stays ABOVE the other levels, at medium, so the
-        # complexity:very-complex escalation path still does something rather
-        # than collapsing into low.
+        # Effort ceilings (detent#2673 clamps an issue's requested effort to its
+        # level or stage): building tops out at high, planning at low,
+        # validation at medium, and complexity:very-complex escalates to Astra
+        # at medium. Nothing reaches xhigh or max automatically; raising a
+        # ceiling requires a human edit here.
         model_selection:
+            enabled: true
             preset: sol_first
-            normal_model: gpt-6-astra
-            complex_model: gpt-6-astra
+            normal_model: gpt-6-sol
+            complex_model: gpt-6-sol
+            backend_kinds: [codex]
+            default_level: normal
             levels:
                 normal:
-                    effort: low
+                    model: normal
+                    effort: high
                 complex:
-                    effort: low
+                    model: complex
+                    effort: high
                 very_complex:
+                    model: gpt-6-astra
                     effort: medium
+            stages:
+                plan:
+                    model: gpt-6-astra
+                    effort: low
+                    issue_complexity: false
+                validator:
+                    model: gpt-6-astra
+                    effort: medium
+                    issue_complexity: false
+                code:
+                    issue_complexity: true
+                rework:
+                    issue_complexity: true
+                merge:
+                    issue_complexity: false
+                routine:
+                    issue_complexity: false
+                security_audit:
+                    issue_complexity: false
+            rules:
+                - name: very_complex
+                  level: very_complex
+                  selector:
+                      labels:
+                          include: [complexity:very-complex]
+                - name: complex
+                  level: complex
+                  selector:
+                      labels:
+                          include: [complexity:complex]
+            unavailable: fallback
+            fallback_order: [normal]
+        backends: []
+        routes: []
     # Raised 5 -> 10 (2026-08-08, operator goal: run as many sessions at once as
     # this host can take). THIS is the fleet hard ceiling on concurrent sessions
     # across all projects -- it is a separate pool from each project's
@@ -45,8 +81,26 @@ global:
     # Host headroom at 10 is not a concern: 16 cores / 128 GB, agents measured at
     # ~71 MB RSS each (~0.7 GB for 10), load ~10 and swap unused at 5 running.
     # The real budget is the Codex window, not the machine -- see detent.yaml.
+    # 2026-09-14 operator: concurrency is not a burn control; "I want it to crank". Waste is fixed by
+    # the loop breaker (#2595) and one reviewer per project, never by fewer slots.
     max_concurrent_agents: 10
-    scheduling: strict
+    # 2026-09-21 operator: the 20 GiB default from detent#2734 sits below this
+    # fleet's real Go build-cache working set (~20-23 GiB), so every 10-minute
+    # sweep evicted entries that running builds still needed and produced
+    # spurious compile/vet failures (detent#2853). 50 GiB leaves headroom so
+    # eviction is rare instead of continuous. Age expiry is unchanged at 48h.
+    cache:
+        max_age: 48h0m0s
+        max_bytes: 53687091200 # 50 GiB
+    # Restored to strict 2026-09-04 after detent#2170 (v0.104.0) removed priority
+    # slot reservation. Priority now orders contention only and never holds idle
+    # capacity, so a priority-0 project whose candidates are all declined by its
+    # own authorization selector can no longer starve the fleet.
+    # 2026-09-13: strict mode preempted (cancelled) running lower-priority sessions whenever a
+    # higher-priority project wanted a slot (scheduler.global_dispatch_preemption on video-studio,
+    # five cancellations in 90 min, every one re-run from scratch). Weighted keeps priority as
+    # ordering for new dispatch without killing paid work.
+    scheduling: weighted
     identity:
         name: corys-mac-studio
         ownership_mode: assignee
@@ -56,19 +110,25 @@ global:
         jitter_seconds: 0
         max_spawn_per_second: 2
     rate_window_pacing:
-        mode: proportional
+        mode: "off"
         floor_percent: 20
         stale_after_seconds: 900
     memory:
         max_agent_rss_bytes: 8589934592
         pressure_some_avg60_threshold: 10
         poll_interval_ms: 1000
+    io:
+        pressure_full_avg10_threshold: 5
+        poll_interval_ms: 1000
+    cpu:
+        pressure_some_avg10_threshold: 80
+        poll_interval_ms: 1000
 projects:
     - id: detent
       workflow: ~/projects/digitaldrywood/detent-orchestration/WORKFLOW.md
       workdir: ~/code/detent-workspaces
       weight: 1
-      priority: 0
+      priority: 1
     - id: gopher-ai
       workflow: /Users/corylanou/projects/gopherguides/gopher-ai/WORKFLOW.md
       workdir: /Users/corylanou/projects/gopherguides/gopher-ai
@@ -87,5 +147,21 @@ projects:
     - id: parable
       workflow: /Users/corylanou/projects/getparable/parable/WORKFLOW.md
       workdir: /Users/corylanou/projects/getparable/parable
+      weight: 1
+      priority: 0
+    # Moved off prometheus 2026-09-13. workflow points at the BUILT artifact in
+    # video-studio/bin, not the tracked source: make build renders this machine's
+    # paths into it. workdir is the Dropbox video workspace.
+    - id: digitaldrywood-video
+      workflow: /Users/corylanou/projects/digitaldrywood/video-studio/bin/detent-video-current/video-production.WORKFLOW.md
+      workdir: "/Users/corylanou/Dropbox/Digital Drywood/Video Production"
+      weight: 2
+      priority: 2
+    # Moved off prometheus 2026-09-13 (paused there first, so ownership never
+    # overlapped). Code repo and its bug-fix workers; tracker is github, so the
+    # only host state is the checkout itself.
+    - id: video-studio
+      workflow: /Users/corylanou/projects/digitaldrywood/video-studio/WORKFLOW.md
+      workdir: /Users/corylanou/projects/digitaldrywood/video-studio
       weight: 1
       priority: 3

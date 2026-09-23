@@ -259,8 +259,10 @@ test of the explanation.
 
 ## Issue effort selection
 
-The default is Codex Sol (`gpt-5.6-sol`) at `high` effort for all work: features,
-fixes, tests, reviews, and routine implementation, including cross-component work.
+Model and effort come from the instance config, split by stage: Codex Astra
+(`gpt-6-astra`) plans at `low` effort and validates at `medium`, and Codex Sol
+(`gpt-6-sol`) builds (code, rework, merge) at `high`. Issues labelled
+`complexity:very-complex` escalate to Astra at `medium`.
 
 Every issue must include an explicit `detent-agent` block, with `model` unset:
 
@@ -270,14 +272,16 @@ effort: high
 ```
 
 - `high` — the default; use it unless the issue states a documented reason not to.
-- `low` — an exception that requires a written reason in the issue, and only for
-  trivial mechanical edits.
-- `medium` — an exception that requires a written reason in the issue.
+  Each stage clamps it to its own ceiling, so planning still runs at `low` and
+  validation at `medium`.
+- `medium` or `low` — an exception that requires a written reason in the issue;
+  it lowers the build effort below what the fleet was measured at.
 - `xhigh` and `max` — operator-designated only; never assign automatically.
 
 Concurrency, recovery, routing, multiple files, or a new endpoint alone never
 justify changing the effort. Preserve intentional operator exceptions and leave
-`model` unset so the issue inherits the fleet-standard model.
+`model` unset: a per-issue model overrides every stage, including Astra planning
+and validation.
 
 ## Mechanism moratorium
 
