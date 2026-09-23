@@ -159,9 +159,12 @@ projects:
       priority: 2
     # Moved off prometheus 2026-09-13 (paused there first, so ownership never
     # overlapped). Code repo and its bug-fix workers; tracker is github, so the
-    # only host state is the checkout itself.
+    # only host state is the checkout itself. Detent reads its config from
+    # video-studio-live, a worktree that only tracks origin/main (branch
+    # live/main), so branch work in the development checkout can never change
+    # the running config. Fast-forward it after config changes merge.
     - id: video-studio
-      workflow: /Users/corylanou/projects/digitaldrywood/video-studio/WORKFLOW.md
-      workdir: /Users/corylanou/projects/digitaldrywood/video-studio
+      workflow: ~/projects/digitaldrywood/video-studio-live/WORKFLOW.md
+      workdir: ~/projects/digitaldrywood/video-studio-live
       weight: 1
       priority: 3
