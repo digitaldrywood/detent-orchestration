@@ -11,6 +11,12 @@ tracker:
     github_status_source: label
     repository: digitaldrywood/detent
     status_label_prefix: "detent:"
+    # 2026-09-24 operator freeze: Detent ships only hotfixes. Only issues labeled
+    # hotfix are dispatched; everything else waits.
+    authorization:
+        labels:
+            include:
+                - hotfix
     observed_states:
         - Backlog
         - Blocked
@@ -160,7 +166,8 @@ agent:
     # window drains, dispatch_planner.go scales the cap down gradually and
     # surfaces provider_rate_window_backpressure. Only revisit this value if
     # sustained (not spiky) churn becomes the norm.
-    max_concurrent_agents: 10
+    # 2026-09-24 operator freeze: one worker for Detent's own board.
+    max_concurrent_agents: 1
     # Spend-progress breaker DISABLED 2026-07-12 (0 = off, spend_progress.go
     # gates on limit <= 0): this host runs on a flat Codex subscription, so
     # every USD figure the breaker computes is notional — it was parking
