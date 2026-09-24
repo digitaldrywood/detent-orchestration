@@ -147,7 +147,9 @@ projects:
     - id: parable
       workflow: /Users/corylanou/projects/getparable/parable/WORKFLOW.md
       workdir: /Users/corylanou/projects/getparable/parable
-      weight: 1
+      # Cory's top-priority project on this host (2026-09-24): highest weight so
+      # it wins every contended slot when it has assigned work.
+      weight: 4
       priority: 0
     # Moved off prometheus 2026-09-13. workflow points at the BUILT artifact in
     # video-studio/bin, not the tracked source: make build renders this machine's
