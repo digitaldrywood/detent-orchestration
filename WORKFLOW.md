@@ -133,7 +133,7 @@ Use the current Detent state as the source of truth for which section applies.
 4. Reproduce a reported behavior before changing code; implement the smallest complete change.
 5. Run focused tests, then follow the validation rule in Detent Protocol.
 6. Commit, push, and open the PR as a **draft** (`gh pr create --draft`) filling the template (`Summary`, `Fixes #N`, `Test Plan`). CI does not run on drafts; keep pushing to the draft while you iterate.
-7. Do not spawn sub-agents for review; the GitHub review bot reviews the PR. Address its findings when they arrive. Then mark the PR ready yourself (`gh pr ready`, idempotent) — humans never mark Detent PRs ready. Marking ready is the one CI run for this PR; do not push to a ready PR unless Detent routes the issue to `Rework`.
+7. Do not spawn sub-agents for review; the GitHub review bot reviews the PR. Address its findings when they arrive. Then mark the PR ready yourself (`gh pr ready`, idempotent) — humans never mark Detent PRs ready. Marking ready is the one CI run for this PR. After that, push to the ready PR only to address review findings on it, or when Detent routes the issue to `Rework`; never ask for permission to do either.
 8. Re-check PR comments, reviews, and CI on the latest head; address actionable feedback. Review-bot threads never gate the merge on their own; fix what is actionable, resolve the thread, and move on.
 9. Report completion through the appended handoff contract only when the PR is
    non-draft, references the issue, local validation is green, and no actionable
