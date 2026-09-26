@@ -244,6 +244,10 @@ agent:
         quiet_seconds: 0
         gate_wait_state: source
         optout_label: requires-human-review
+        # 2026-09-26 operator: this board never uses Human Review. After the gate
+        # wait timeout, a green PR with no blocking findings merges instead of
+        # waiting indefinitely on an optional bot review.
+        gate_wait_timeout_action: merge
         allowed_issue_labels: []
 codex:
     # Allowlist added 2026-08-14: detent#1787 ships elicitation approval
