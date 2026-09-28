@@ -42,7 +42,7 @@ dependency, human-question, completion, and tracker ownership contract. Do not
 copy that contract here; see Detent's docs/templates/blocked-handoff.md.
 
 The validation gate is `make check-fast` (the configured `gate.run`; this file must
-state it because the orchestrator config is outside your worktree). Race tests, coverage, and nilaway run once in the merge queue, not in your session; do not run `make check` unless a change touches the safety-critical orchestrator files listed in CLAUDE.md. Run
+state it because the orchestrator config is outside your worktree). Race tests, coverage, and nilaway run in the hourly scheduled build on develop, not in your session; do not run `make check` unless a change touches the safety-critical orchestrator files listed in CLAUDE.md. Run
 `make generate` before committing if you touched templates, queries, or CSS,
 and commit the generated output. New or changed observable behavior requires
 stdlib table-driven tests (no testify); the coverage gate is 70%, with
@@ -133,13 +133,20 @@ Use the current Detent state as the source of truth for which section applies.
 4. Reproduce a reported behavior before changing code; implement the smallest complete change.
 5. Run focused tests, then follow the validation rule in Detent Protocol.
 6. Commit, push, and open the PR as a **draft** (`gh pr create --draft`) filling the template (`Summary`, `Fixes #N`, `Test Plan`). CI does not run on drafts; keep pushing to the draft while you iterate.
-7. Do not spawn sub-agents for review; the GitHub review bot reviews the PR. Address its findings when they arrive. Then mark the PR ready yourself (`gh pr ready`, idempotent) — humans never mark Detent PRs ready. Marking ready is the one CI run for this PR. After that, push to the ready PR only to address review findings on it, or when Detent routes the issue to `Rework`; never ask for permission to do either.
+7. Do not spawn sub-agents for review; the GitHub review bot reviews the PR. Address its findings when they arrive. Then mark the PR ready yourself (`gh pr ready`, idempotent) — humans never mark Detent PRs ready. After marking ready, push to the ready PR only to address review findings on it, or when Detent routes the issue to `Rework`; never ask for permission to do either.
 8. Re-check PR comments, reviews, and CI on the latest head; address actionable feedback. Review-bot threads never gate the merge on their own; fix what is actionable, resolve the thread, and move on.
 9. Report completion through the appended handoff contract only when the PR is
    non-draft, references the issue, local validation is green, and no actionable
-   review remains. PR checks are skipped by design (INV-5): full CI runs only in
-   the merge queue, so skipped PR checks plus a green local gate are sufficient.
-   A failed PR check still blocks completion. Report exact validation failures.
+   review remains. There is no CI on pull requests: after `make check-fast`
+   passes on the exact commit you pushed, post the `local-gate` commit status on
+   that SHA, which develop's branch rules require:
+   `gh api -X POST repos/digitaldrywood/detent/statuses/$(git rev-parse HEAD) -f state=success -f context=local-gate -f description="make check-fast passed locally"`.
+   Post it only for a commit whose gate passed in this session; if the gate
+   fails, fix it instead of posting. Any later push, including a rebase onto
+   develop, needs a fresh gate and a fresh `local-gate` status. Never poll or
+   wait on CI; an hourly build on mac-studio runs the full suite on develop and
+   files a hotfix issue if it breaks. Open pull requests against `develop`.
+   Report exact validation failures.
 
 ### For In Progress
 
