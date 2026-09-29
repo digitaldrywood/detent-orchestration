@@ -243,7 +243,7 @@ agent:
         enabled: true
         quiet_seconds: 0
         gate_wait_state: source
-        optout_label: requires-human-review
+        optout_label: detent-optout-disabled
         # 2026-09-26 operator: this board never uses Human Review. After the gate
         # wait timeout, a green PR with no blocking findings merges instead of
         # waiting indefinitely on an optional bot review.
