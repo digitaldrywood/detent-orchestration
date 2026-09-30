@@ -41,12 +41,16 @@ Follow the Detent-appended Blocked handoff section for the canonical Workpad,
 dependency, human-question, completion, and tracker ownership contract. Do not
 copy that contract here; see Detent's docs/templates/blocked-handoff.md.
 
-The validation gate is `make check-fast` (the configured `gate.run`; this file must
-state it because the orchestrator config is outside your worktree). Race tests, coverage, and nilaway run in the hourly scheduled build on develop, not in your session; do not run `make check` unless a change touches the safety-critical orchestrator files listed in CLAUDE.md. Run
-`make generate` before committing if you touched templates, queries, or CSS,
-and commit the generated output. New or changed observable behavior requires
-stdlib table-driven tests (no testify); the coverage gate is 70%, with
-generated code excluded by `.golangci.yml`. Never bypass pre-commit hooks
+The operator has disabled blocking CI and local validation gates for this
+project. The configured `gate.run` is `true`; it performs no validation and
+publishes no status. Do not run or wait for `make check`, `make check-fast`,
+coverage, race suites, or other full checks before pushing or merging.
+Focused diagnostics may be used while fixing a behavior, without becoming a
+completion gate. The scheduled full suite validates pinned develop commits
+and files focused hotfix issues. Run `make generate` if templates, queries,
+or CSS change and commit the generated output.
+
+Never bypass pre-commit hooks
 (`--no-verify`, `SKIP=...`) without explicit human authorization in the same
 turn; if a no-commit-to-branch hook fails you are on the wrong branch — switch
 to `detent/<issue-id>` and rerun.
@@ -83,22 +87,16 @@ dispatch draw down the same REST bucket. On 2026-08-08 REST hit 0/5000 twice and
 suppressed dispatch (`skip_reason: github_rest_capacity_paused`) while GraphQL
 sat at ~4,700/5,000 — about 6% used. Treat REST as the budget to protect.
 
-CI watching is where the budget goes. Poll as little as possible:
+Pull requests have no GitHub Actions runs or required status checks. Avoid
+GitHub polling; inspect PR reviews only when a worker needs to respond. The
+scheduled full suite runs on GitHub's default branch against a pinned develop
+SHA and files hotfix issues for failed jobs. It does not gate or validate an
+individual PR head. The scheduled green run tags the validated SHA; it does
+not merge to main or deploy production. Every develop push deploys to staging.
 
-- Watch CI with a single blocking `gh run watch <run-id> --exit-status`.
-  Prefer this over any polling loop — it is one call, not one per interval.
-- If you must poll `gh api repos/<o>/<r>/commits/<sha>/check-runs`, use an
-  interval of **60s or more** and cap the total iterations. Never poll faster
-  than 60s, never loop unbounded, and never loop `gh pr checks --watch` or
-  `gh pr view`.
-- Never poll `api.github.com` with bare `curl`. Unauthenticated requests get the
-  60/hr anonymous IP limit and are invisible to budget accounting.
-- Merge via `gh api --method PUT repos/<o>/<r>/pulls/<N>/merge
-  -f merge_method=squash -f sha=<sha>`; never `gh pr merge`.
-- Status changes are label updates over REST.
-- When REST is the constrained budget and the same read is available on GraphQL,
-  use GraphQL — it has idle headroom. On a GraphQL rate-limit error, fall back to
-  REST rather than waiting for the hourly reset.
+Merge via `gh api --method PUT repos/<o>/<r>/pulls/<N>/merge` with the exact
+head SHA. Status changes remain label updates over REST. When REST is scarce,
+prefer GraphQL for equivalent read-only observations.
 
 Do not use GitHub Actions as an edit loop: batch local fixes, run focused
 tests then validate locally as specified in Detent Protocol, and push once per validated batch.
@@ -129,23 +127,19 @@ Use the current Detent state as the source of truth for which section applies.
 
 1. Re-read the issue and current Workpad.
 2. Initialize the Workpad using the appended handoff contract.
-3. Fetch `origin/main`, confirm the worktree branch is based on it, and resolve dependencies.
+3. Fetch `origin/develop`, confirm the worktree branch is based on it, and resolve dependencies.
 4. Reproduce a reported behavior before changing code; implement the smallest complete change.
-5. Run focused tests, then follow the validation rule in Detent Protocol.
-6. Commit, push, and open the PR as a **draft** (`gh pr create --draft`) filling the template (`Summary`, `Fixes #N`, `Test Plan`). CI does not run on drafts; keep pushing to the draft while you iterate.
+5. Use focused diagnostics when needed; do not introduce a blocking gate.
+6. Commit, push, and open the PR as a **draft** (`gh pr create --draft`) filling the template (`Summary`, `Fixes #N`, `Test Plan`). Keep pushing to the draft while you iterate.
 7. Do not spawn sub-agents for review; the GitHub review bot reviews the PR. Address its findings when they arrive. Then mark the PR ready yourself (`gh pr ready`, idempotent) — humans never mark Detent PRs ready. After marking ready, push to the ready PR only to address review findings on it, or when Detent routes the issue to `Rework`; never ask for permission to do either.
-8. Re-check PR comments, reviews, and CI on the latest head; address actionable feedback. Review-bot threads never gate the merge on their own; fix what is actionable, resolve the thread, and move on.
+8. Re-check PR comments and reviews on the latest head; address actionable feedback. Review-bot threads never gate the merge on their own; fix what is actionable, resolve the thread, and move on.
 9. Report completion through the appended handoff contract only when the PR is
-   non-draft, references the issue, local validation is green, and no actionable
-   review remains. There is no CI on pull requests: after `make check-fast`
-   passes on the exact commit you pushed, post the `local-gate` commit status on
-   that SHA, which develop's branch rules require:
-   `gh api -X POST repos/digitaldrywood/detent/statuses/$(git rev-parse HEAD) -f state=success -f context=local-gate -f description="make check-fast passed locally"`.
-   Post it only for a commit whose gate passed in this session; if the gate
-   fails, fix it instead of posting. Any later push, including a rebase onto
-   develop, needs a fresh gate and a fresh `local-gate` status. Never poll or
-   wait on CI; an hourly build on mac-studio runs the full suite on develop and
-   files a hotfix issue if it breaks. Open pull requests against `develop`.
+   non-draft, references the issue, and no actionable
+   review remains. Run the configured `make check-fast` gate in this worktree
+   for the final pushed commit. No commit status or PR CI check is required.
+   A scheduled GitHub Actions run later validates the integrated develop SHA
+   and files a hotfix issue if the full suite fails. Open pull requests against
+   `develop`.
    Report exact validation failures.
 
 ### For In Progress
@@ -155,16 +149,14 @@ When implementation is complete, follow the validation rule in Detent Protocol a
 
 ### For Rework
 
-Re-read all human, CI, and bot feedback, fix,
-validate and push as specified in Detent Protocol, and apply Todo's completion rule.
+Re-read actionable human and bot feedback, fix and push as specified in Detent Protocol, and apply Todo's completion rule.
 
 ### For Merging
 
-1. Rebase the PR branch onto current `origin/main`, validate the
+1. Rebase the PR branch onto current `origin/develop`, validate the
    rebased branch as specified in Detent Protocol, and push.
-2. Watch CI on the pushed head via REST; wait for every check to pass and
-   every automated review to be addressed (no `CHANGES_REQUESTED`, no pending
-   bot review).
+2. Address actionable review and confirm the local fast gate passed on the
+   exact pushed head. No PR CI status is required.
 3. Merge via the REST merge endpoint with the exact head sha, then report the merge in the Workpad.
 4. Report exactly one terminal outcome through the Workpad:
    - PR merged and issue moved to `Done`;
@@ -231,7 +223,7 @@ A precise symptom plus expected behavior satisfies this. A literal
 a disqualifier — a bug report with evidence, cause, and file:line is
 ready. What fails this dimension is a wish with no checkable end state.
 
-An issue whose `Depends on:` reference is not merged into `origin/main`
+An issue whose `Depends on:` reference is not merged into `origin/develop`
 is not ready; leave it in `Backlog`.
 
 A missing `detent-agent` effort block alone does not make an issue unready.
@@ -270,7 +262,7 @@ test of the explanation.
 
 Model and effort come from the instance config, split by stage: Codex Astra
 (`gpt-6-astra`) plans at `low` effort and validates at `medium`, and Codex Sol
-(`gpt-6-sol`) builds (code, rework, merge) at `high`. Issues labelled
+(`gpt-6.1-sol`) builds (code, rework, merge) at `high`. Issues labelled
 `complexity:very-complex` escalate to Astra at `medium`.
 
 Every issue must include an explicit `detent-agent` block, with `model` unset:
