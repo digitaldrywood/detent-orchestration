@@ -24,8 +24,8 @@ global:
         model_selection:
             enabled: true
             preset: sol_first
-            normal_model: gpt-6-sol
-            complex_model: gpt-6-sol
+            normal_model: gpt-6.1-sol
+            complex_model: gpt-6.1-sol
             backend_kinds: [codex]
             default_level: normal
             levels:
