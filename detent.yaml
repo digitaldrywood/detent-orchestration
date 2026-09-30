@@ -123,10 +123,6 @@ workspace:
 agent:
     # 2026-09-13: disabled pending detent#2538 (brake counts cached prompt tokens and infra-failed attempts; false parks on subscription).
     no_progress_token_limit: 0
-    # Merge train: keep global throughput at 5, but serialize the final
-    # rebase/push/merge so concurrent merge candidates do not invalidate
-    # each other's CI. States omitted from max_concurrent_agents_by_state
-    # share the global pool.
     # Restored to 5 (full throughput): the two root causes of the earlier
     # exhaustion are fixed — host TCP/socket churn (sysctl msl=1000 +
     # portrange.first=16384 + #311 process-group reaping) and the 552-pt board
@@ -171,7 +167,7 @@ agent:
     # (subscription vs metered — see the subscription-mode issue).
     no_progress_spend_limit_usd: 0
     max_concurrent_agents_by_state:
-        Merging: 1
+        Merging: 4
     dispatch_priority_by_state:
         - Merging
         - Rework
@@ -295,7 +291,7 @@ gate:
         block_on: [p1]
     run: "true"
     required_status_checks: []
-    require_automated_review: false
+    automated_review: "off"
 budget:
     # Enabled 2026-07-11 as an independent circuit breaker against runaway
     # sessions, orthogonal to the no-progress breaker (which had a real gap,
