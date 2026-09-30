@@ -270,7 +270,7 @@ test of the explanation.
 
 Model and effort come from the instance config, split by stage: Codex Astra
 (`gpt-6-astra`) plans at `low` effort and validates at `medium`, and Codex Sol
-(`gpt-6-sol`) builds (code, rework, merge) at `high`. Issues labelled
+(`gpt-6.1-sol`) builds (code, rework, merge) at `high`. Issues labelled
 `complexity:very-complex` escalate to Astra at `medium`.
 
 Every issue must include an explicit `detent-agent` block, with `model` unset:
