@@ -294,6 +294,7 @@ gate:
         enabled: false
         block_on: [p1]
     run: "true"
+    required_status_checks: []
     require_automated_review: false
 budget:
     # Enabled 2026-07-11 as an independent circuit breaker against runaway
