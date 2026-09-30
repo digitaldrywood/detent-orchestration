@@ -295,7 +295,7 @@ gate:
         block_on: [p1]
     run: "true"
     required_status_checks: []
-    require_automated_review: false
+    automated_review: "off"
 budget:
     # Enabled 2026-07-11 as an independent circuit breaker against runaway
     # sessions, orthogonal to the no-progress breaker (which had a real gap,
